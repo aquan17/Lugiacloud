@@ -58,6 +58,7 @@ class SyncProxiesCommand extends Command
                             }
                         }
 
+                        $changed = false;
                         if ($proxy->ip !== ($remote['ip'] ?? $proxy->ip) || 
                             $proxy->port != ($remote['port'] ?? $proxy->port) ||
                             $proxy->status !== $newStatus ||
