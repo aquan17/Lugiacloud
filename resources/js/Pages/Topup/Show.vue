@@ -12,6 +12,7 @@ const props = defineProps<{
     order: {
         id: number;
         code: string;
+        transfer_content?: string;
         amount: number;
         bonus_amount: number;
         bonus_percent: number;
@@ -134,8 +135,8 @@ async function copyField(val: string, name: string) {
                         </div>
                         <div class="p-3 flex items-center justify-between bg-amber-50/80">
                             <span class="text-amber-900 font-bold">Nội dung chuyển khoản</span>
-                            <button @click="copyField(order.code, 'Nội dung CK')" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-200 text-amber-950 font-mono font-black text-xs hover:bg-amber-300 transition cursor-pointer shadow-2xs">
-                                <span>{{ order.code }}</span>
+                            <button @click="copyField(order.transfer_content || order.code, 'Nội dung CK')" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-200 text-amber-950 font-mono font-black text-xs hover:bg-amber-300 transition cursor-pointer shadow-2xs">
+                                <span>{{ order.transfer_content || order.code }}</span>
                                 <Copy class="w-3.5 h-3.5" />
                             </button>
                         </div>

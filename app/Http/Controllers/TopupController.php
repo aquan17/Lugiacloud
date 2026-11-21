@@ -117,11 +117,14 @@ class TopupController extends Controller
         $payosQr = data_get($order->raw_payload, 'data.qrCode');
         $checkoutUrl = data_get($order->raw_payload, 'data.checkoutUrl');
         $expectedBonus = $promotions->calculateTopupBonus((int) $order->amount);
+        $rawBin = (string) (data_get($order->raw_payload, 'data.bin') ?: config('deposit.bank_id'));
+        $transferContent = (string) (data_get($order->raw_payload, 'data.description') ?: $order->code);
 
         return Inertia::render('Topup/Show', [
             'order' => [
                 'id' => $order->id,
                 'code' => $order->code,
+                'transfer_content' => $transferContent,
                 'amount' => (int) $order->amount,
                 'bonus_amount' => $order->isApproved() ? (int) $order->bonus_amount : (int) $expectedBonus['bonus_amount'],
                 'bonus_percent' => (float) $expectedBonus['bonus_percent'],
@@ -130,7 +133,7 @@ class TopupController extends Controller
                 'vietqr_url' => $order->viet_qr_url,
                 'payos_qr' => $payosQr,
                 'checkout_url' => $checkoutUrl,
-                'bank_id' => data_get($order->raw_payload, 'data.bin') ?: config('deposit.bank_id'),
+                'bank_id' => $this->formatBankName($rawBin),
                 'account_no' => data_get($order->raw_payload, 'data.accountNumber') ?: config('deposit.account_no'),
                 'account_name' => data_get($order->raw_payload, 'data.accountName') ?: config('deposit.account_name'),
                 'created_at' => $order->created_at?->format('d/m/Y H:i'),
@@ -340,5 +343,40 @@ class TopupController extends Controller
             ?? data_get($payload, 'transaction.reference')
             ?? data_get($payload, 'data.transactionId')
             ?? data_get($payload, 'data.paymentLinkId');
+    }
+
+    private function formatBankName(string $binOrCode): string
+    {
+        $map = [
+            '970426' => 'MSB — Ngân hàng TMCP Hàng Hải',
+            '970422' => 'MB Bank — Ngân hàng Quân Đội',
+            '970418' => 'BIDV',
+            '970436' => 'Vietcombank',
+            '970407' => 'Techcombank',
+            '970415' => 'VietinBank',
+            '970416' => 'ACB',
+            '970432' => 'VPBank',
+            '970423' => 'TPBank',
+            '970403' => 'Sacombank',
+            '970448' => 'OCB',
+            '970437' => 'HDBank',
+            '970441' => 'VIB',
+            '970405' => 'Agribank',
+            '970443' => 'SHB',
+            '970454' => 'BVBank (Timo)',
+            '970449' => 'LPBank',
+            '970431' => 'Eximbank',
+            '970428' => 'Nam A Bank',
+            '970440' => 'SeABank',
+            '970452' => 'KienLongBank',
+            '970424' => 'Shinhan Bank',
+            '970425' => 'ABBANK',
+            '970412' => 'PVcomBank',
+            'MSB' => 'MSB — Ngân hàng TMCP Hàng Hải',
+        ];
+
+        $key = strtoupper(trim($binOrCode));
+
+        return $map[$key] ?? $binOrCode;
     }
 }

@@ -56,10 +56,15 @@ class TopupRequest extends Model
 
     public function getVietQrUrlAttribute(): string
     {
-        return 'https://img.vietqr.io/image/' . config('deposit.bank_id') . '-' . config('deposit.account_no') . '-compact2.png?' . http_build_query([
+        $bankId = (string) (data_get($this->raw_payload, 'data.bin') ?: config('deposit.bank_id'));
+        $accountNo = (string) (data_get($this->raw_payload, 'data.accountNumber') ?: config('deposit.account_no'));
+        $accountName = (string) (data_get($this->raw_payload, 'data.accountName') ?: config('deposit.account_name'));
+        $addInfo = (string) (data_get($this->raw_payload, 'data.description') ?: $this->code);
+
+        return 'https://img.vietqr.io/image/' . rawurlencode($bankId) . '-' . rawurlencode($accountNo) . '-compact2.png?' . http_build_query([
             'amount' => $this->amount,
-            'addInfo' => $this->code,
-            'accountName' => config('deposit.account_name'),
+            'addInfo' => $addInfo,
+            'accountName' => $accountName,
         ]);
     }
 
