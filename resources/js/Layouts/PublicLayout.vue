@@ -250,71 +250,67 @@ function openWelcomeOfferPrompt() {
 
         <!-- Thanh điều hướng chính -->
         <header class="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200/90">
-            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
-                <div class="flex items-center gap-7 lg:gap-9">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-3">
+                <div class="flex items-center gap-5 xl:gap-7 min-w-0">
                     <Link href="/" class="flex items-center gap-2.5 shrink-0">
                         <img src="/logo.webp" alt="LugiaCloud" width="136" height="34" decoding="async" class="h-8 sm:h-8.5 w-auto object-contain" />
                     </Link>
 
-                    <nav class="hidden lg:flex items-center gap-1 text-[13px] font-semibold text-slate-600">
-                        <button type="button" @click="goSection('#pricing', 'vps')" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg hover:bg-slate-100/80 hover:text-[#0B1437] transition-colors cursor-pointer">
-                            <Server class="w-3.5 h-3.5 text-[#1D6AE5]" />
+                    <nav class="hidden lg:flex items-center gap-0.5 xl:gap-1 text-[13px] font-semibold text-slate-600">
+                        <button type="button" @click="goSection('#pricing', 'vps')" class="inline-flex items-center gap-1.5 px-2.5 xl:px-3 py-2 rounded-lg hover:bg-slate-100/80 hover:text-[#0B1437] transition-colors cursor-pointer whitespace-nowrap shrink-0">
+                            <Server class="w-3.5 h-3.5 text-[#1D6AE5] shrink-0" />
                             <span>Máy chủ VPS</span>
                         </button>
-                        <button type="button" @click="goSection('#pricing', 'proxy')" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg hover:bg-slate-100/80 hover:text-[#0B1437] transition-colors cursor-pointer">
-                            <Globe class="w-3.5 h-3.5 text-[#1D6AE5]" />
+                        <button type="button" @click="goSection('#pricing', 'proxy')" class="inline-flex items-center gap-1.5 px-2.5 xl:px-3 py-2 rounded-lg hover:bg-slate-100/80 hover:text-[#0B1437] transition-colors cursor-pointer whitespace-nowrap shrink-0">
+                            <Globe class="w-3.5 h-3.5 text-[#1D6AE5] shrink-0" />
                             <span>Proxy Việt Nam</span>
                         </button>
-                        <Link href="/servers/store" prefetch class="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg hover:bg-slate-100/80 hover:text-[#0B1437] transition-colors">
-                            <Cpu class="w-3.5 h-3.5 text-indigo-600" />
+                        <Link href="/servers/store" prefetch class="inline-flex items-center gap-1.5 px-2.5 xl:px-3 py-2 rounded-lg hover:bg-slate-100/80 hover:text-[#0B1437] transition-colors whitespace-nowrap shrink-0">
+                            <Cpu class="w-3.5 h-3.5 text-indigo-600 shrink-0" />
                             <span>Máy chủ vật lý</span>
                         </Link>
-                        <Link href="/pricing" prefetch class="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg hover:bg-slate-100/80 hover:text-[#0B1437] transition-colors">
-                            <Tag class="w-3.5 h-3.5 text-slate-400" />
+                        <Link href="/pricing" prefetch class="inline-flex items-center gap-1.5 px-2.5 xl:px-3 py-2 rounded-lg hover:bg-slate-100/80 hover:text-[#0B1437] transition-colors whitespace-nowrap shrink-0">
+                            <Tag class="w-3.5 h-3.5 text-slate-400 shrink-0" />
                             <span>Bảng giá</span>
                         </Link>
-                        <button type="button" @click="goSection('#architecture')" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg hover:bg-slate-100/80 hover:text-[#0B1437] transition-colors cursor-pointer">
-                            <Code2 class="w-3.5 h-3.5 text-slate-400" />
-                            <span>API Đại lý</span>
-                        </button>
-                        <Link href="/blog" prefetch class="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg hover:bg-slate-100/80 hover:text-[#0B1437] transition-colors">
-                            <BookOpen class="w-3.5 h-3.5 text-slate-400" />
+                        <Link href="/blog" prefetch class="inline-flex items-center gap-1.5 px-2.5 xl:px-3 py-2 rounded-lg hover:bg-slate-100/80 hover:text-[#0B1437] transition-colors whitespace-nowrap shrink-0">
+                            <BookOpen class="w-3.5 h-3.5 text-slate-400 shrink-0" />
                             <span>Blog</span>
                         </Link>
-                        <Link href="/support" prefetch class="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg hover:bg-slate-100/80 hover:text-[#0B1437] transition-colors">
-                            <Headphones class="w-3.5 h-3.5 text-slate-400" />
+                        <Link href="/support" prefetch class="inline-flex items-center gap-1.5 px-2.5 xl:px-3 py-2 rounded-lg hover:bg-slate-100/80 hover:text-[#0B1437] transition-colors whitespace-nowrap shrink-0">
+                            <Headphones class="w-3.5 h-3.5 text-slate-400 shrink-0" />
                             <span>Hỗ trợ 24/7</span>
                         </Link>
                     </nav>
                 </div>
 
-                <div class="hidden md:flex items-center gap-2.5">
+                <div class="hidden md:flex items-center gap-2 shrink-0">
                     <template v-if="user">
-                        <span class="px-3 py-1.5 rounded-lg bg-slate-100 border border-slate-200 text-xs font-mono-num font-bold text-[#0B1437]">
+                        <span class="px-3 py-1.5 rounded-lg bg-slate-100 border border-slate-200 text-xs font-mono-num font-bold text-[#0B1437] whitespace-nowrap">
                             {{ formatVnd(user.balance) }}
                         </span>
                         <Link
                             href="/dashboard"
-                            class="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#0B1437] hover:bg-[#162354] text-white text-xs font-bold transition-colors"
+                            class="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-[#0B1437] hover:bg-[#162354] text-white text-xs font-bold transition-colors whitespace-nowrap shrink-0"
                         >
-                            <LayoutDashboard class="w-3.5 h-3.5 text-sky-400" />
+                            <LayoutDashboard class="w-3.5 h-3.5 text-sky-400 shrink-0" />
                             <span>Bảng điều khiển</span>
                         </Link>
                     </template>
                     <template v-else>
                         <Link
                             href="/login"
-                            class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[13px] font-semibold text-slate-700 hover:text-[#0B1437] hover:bg-slate-100 transition-colors"
+                            class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-[13px] font-semibold text-slate-700 hover:text-[#0B1437] hover:bg-slate-100 transition-colors whitespace-nowrap shrink-0"
                         >
-                            <LogIn class="w-3.5 h-3.5 text-slate-500" />
+                            <LogIn class="w-3.5 h-3.5 text-slate-500 shrink-0" />
                             <span>Đăng nhập</span>
                         </Link>
                         <Link
                             href="/register"
-                            class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#1D6AE5] hover:bg-[#1557C0] text-white text-[13px] font-bold shadow-xs transition-colors"
+                            class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#1D6AE5] hover:bg-[#1557C0] text-white text-[13px] font-bold shadow-xs transition-colors whitespace-nowrap shrink-0"
                         >
                             <span>Đăng ký miễn phí</span>
-                            <ArrowRight class="w-3.5 h-3.5" />
+                            <ArrowRight class="w-3.5 h-3.5 shrink-0" />
                         </Link>
                     </template>
                 </div>
