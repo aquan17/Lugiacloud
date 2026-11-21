@@ -1,0 +1,125 @@
+@import "tailwindcss";
+
+@source "../js/**/*.vue";
+@source "../js/**/*.ts";
+@source "../js/**/*.js";
+
+@layer base {
+  :root {
+    --lugia-navy: #0B1437;
+    --lugia-ink: #0F172A;
+    --lugia-blue: #1D6AE5;
+    --lugia-blue-hover: #1557C0;
+    --lugia-sky: #2B9FFF;
+    --lugia-canvas: #F5F7FB;
+    --lugia-border: #E2E8F0;
+  }
+
+  body {
+    font-family: 'Be Vietnam Pro', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    color: var(--lugia-ink);
+    background-color: var(--lugia-canvas);
+    text-rendering: optimizeLegibility;
+  }
+
+  code, pre, .font-mono {
+    font-family: 'JetBrains Mono', 'Cascadia Code', 'Segoe UI Mono', Consolas, ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+}
+
+.font-mono-num {
+  font-family: 'JetBrains Mono', 'Cascadia Code', 'Segoe UI Mono', Consolas, ui-monospace, SFMono-Regular, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Hero atmospheric mesh + crisp technical grid */
+.bg-hero-surface {
+  background-color: #FFFFFF;
+  background-image:
+    radial-gradient(at 85% 20%, rgba(29, 106, 229, 0.09) 0px, transparent 52%),
+    radial-gradient(at 12% 80%, rgba(56, 189, 248, 0.08) 0px, transparent 48%),
+    linear-gradient(to right, rgba(15, 26, 66, 0.038) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(15, 26, 66, 0.038) 1px, transparent 1px);
+  background-size: 100% 100%, 100% 100%, 32px 32px, 32px 32px;
+}
+
+.bg-tech-grid {
+  background-size: 32px 32px;
+  background-image:
+    linear-gradient(to right, rgba(15, 26, 66, 0.04) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(15, 26, 66, 0.04) 1px, transparent 1px);
+}
+
+.bg-navy-grid {
+  background-size: 28px 28px;
+  background-image:
+    linear-gradient(to right, rgba(255, 255, 255, 0.055) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.055) 1px, transparent 1px);
+}
+
+.surface-card {
+  background: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.035);
+}
+
+.surface-card-interactive {
+  background: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.03);
+  transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+}
+
+.surface-card-interactive:hover {
+  border-color: #93C5FD;
+  box-shadow: 0 10px 24px -8px rgba(29, 106, 229, 0.12);
+  transform: translateY(-2px);
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94A3B8;
+}
+
+@keyframes lugia-indeterminate {
+  0% {
+    transform: translateX(-100%) scaleX(0.35);
+  }
+  50% {
+    transform: translateX(35%) scaleX(0.65);
+  }
+  100% {
+    transform: translateX(220%) scaleX(0.35);
+  }
+}
+
+.lugia-progress-bar {
+  width: 45%;
+  animation: lugia-indeterminate 1.25s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  will-change: transform;
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: #FFFFFF !important;
+  }
+}

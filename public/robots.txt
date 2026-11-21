@@ -1,0 +1,16 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /dashboard
+Disallow: /vps
+Disallow: /proxy
+Disallow: /billing
+Disallow: /invoices
+Disallow: /topup
+Disallow: /profile
+Disallow: /notifications
+Disallow: /affiliate
+Disallow: /reseller-api
+Disallow: /api
+
+Sitemap: https://lugiacloud.com/sitemap.xml
