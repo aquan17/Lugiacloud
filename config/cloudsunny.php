@@ -101,7 +101,7 @@ return [
             'ram' => 4,
             'disk' => 30,
             'transfer_tb' => 'Unlimited',
-            'network_out_mbps' => 1000,
+            'network_out_mbps' => 100,
         ],
         'lg-8' => [
             'provider_id' => 'sn-4-8-50',
