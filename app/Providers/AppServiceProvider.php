@@ -5,6 +5,7 @@ namespace App\Providers;
 use App\Mail\Transport\BrevoApiTransport;
 use App\Mail\Transport\MailjetApiTransport;
 use App\Mail\Transport\ResendApiTransport;
+use App\Mail\Transport\SenderApiTransport;
 use App\Mail\Transport\SmartFailoverTransport;
 use App\Services\CloudSunnyPricingService;
 use App\Services\CloudSunnyProxyPricingService;
@@ -61,6 +62,13 @@ class AppServiceProvider extends ServiceProvider
             $fromAddress = isset($config['from_address']) ? (string) $config['from_address'] : null;
             $fromName = isset($config['from_name']) ? (string) $config['from_name'] : null;
             return new MailjetApiTransport($apiKey, $secretKey, $fromAddress, $fromName);
+        });
+
+        Mail::extend('sender', function (array $config = []) {
+            $token = (string) ($config['token'] ?? '');
+            $fromAddress = isset($config['from_address']) ? (string) $config['from_address'] : null;
+            $fromName = isset($config['from_name']) ? (string) $config['from_name'] : null;
+            return new SenderApiTransport($token, $fromAddress, $fromName);
         });
 
         Mail::extend('smart_failover', function (array $config = []) {

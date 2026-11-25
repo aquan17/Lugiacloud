@@ -93,6 +93,9 @@ class SmartFailoverTransport implements TransportInterface
             return trim((string) ($cfg['key'] ?? '')) !== ''
                 && trim((string) ($cfg['secret'] ?? '')) !== '';
         }
+        if ($transport === 'sender') {
+            return trim((string) ($cfg['token'] ?? '')) !== '';
+        }
         if ($transport === 'smtp') {
             return trim((string) ($cfg['host'] ?? '')) !== ''
                 && trim((string) ($cfg['username'] ?? '')) !== ''

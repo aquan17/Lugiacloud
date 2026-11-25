@@ -40,7 +40,7 @@ return [
             'transport' => 'smart_failover',
             'mailers' => array_values(array_filter(array_map(
                 'trim',
-                explode(',', (string) env('MAIL_FAILOVER_ORDER', 'resend,mailjet,brevo'))
+                explode(',', (string) env('MAIL_FAILOVER_ORDER', 'resend,sender,mailjet,brevo'))
             ))),
         ],
 
@@ -48,13 +48,20 @@ return [
             'transport' => 'smart_failover',
             'mailers' => array_values(array_filter(array_map(
                 'trim',
-                explode(',', (string) env('MAIL_BROADCAST_ORDER', 'mailjet,brevo,resend'))
+                explode(',', (string) env('MAIL_BROADCAST_ORDER', 'sender,mailjet,brevo,resend'))
             ))),
         ],
 
         'resend' => [
             'transport' => 'resend',
             'key' => env('RESEND_KEY', env('MAIL_PASSWORD')),
+        ],
+
+        'sender' => [
+            'transport' => 'sender',
+            'token' => env('SENDER_API_TOKEN'),
+            'from_address' => env('SENDER_FROM_ADDRESS'),
+            'from_name' => env('SENDER_FROM_NAME'),
         ],
 
         'mailjet' => [

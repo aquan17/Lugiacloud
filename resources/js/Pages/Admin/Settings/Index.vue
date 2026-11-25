@@ -4,6 +4,7 @@ import AdminLayout from '@/Layouts/AdminLayout.vue';
 
 const props = defineProps<{
     isVpsOutOfStock: boolean;
+    requireEmailVerification: boolean;
     depositConfig: {
         provider: string;
         bank_id: string;
@@ -16,6 +17,12 @@ const props = defineProps<{
 function toggleStock() {
     router.post('/admin/settings/toggle-vps-stock', {
         is_out_of_stock: !props.isVpsOutOfStock,
+    });
+}
+
+function toggleEmailVerification() {
+    router.post('/admin/settings/toggle-email-verification', {
+        require_email_verification: !props.requireEmailVerification,
     });
 }
 </script>
@@ -43,6 +50,27 @@ function toggleStock() {
                     "
                 >
                     {{ isVpsOutOfStock ? 'Đang khóa đơn mới — Bấm để Mở lại' : 'Đang mở bán — Bấm để Tạm khóa' }}
+                </button>
+            </div>
+
+            <div class="surface-card p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-2xl border border-slate-200/90 shadow-xs">
+                <div class="space-y-1">
+                    <h3 class="text-sm font-extrabold text-[#0B1437]">Xác thực Email khi đăng ký tài khoản</h3>
+                    <p class="text-xs text-slate-600 font-medium leading-relaxed">
+                        Mặc định bật để chống tài khoản ảo. Khi nhà cung cấp email tạm hết hạn mức hoặc gặp sự cố, bạn có thể tạm tắt để khách đăng ký mới được kích hoạt ngay và vào thẳng Dashboard (không gửi mail xác thực).
+                    </p>
+                </div>
+                <button
+                    type="button"
+                    @click="toggleEmailVerification"
+                    class="px-4 py-2.5 rounded-xl text-xs font-bold shrink-0 cursor-pointer transition shadow-xs active:scale-95"
+                    :class="
+                        requireEmailVerification
+                            ? 'bg-amber-600 text-white hover:bg-amber-700'
+                            : 'bg-emerald-600 text-white hover:bg-emerald-700'
+                    "
+                >
+                    {{ requireEmailVerification ? 'Đang bật xác thực — Bấm để Tạm tắt' : 'Đang tắt xác thực — Bấm để Bật lại' }}
                 </button>
             </div>
 

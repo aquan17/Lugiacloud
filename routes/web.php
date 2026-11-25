@@ -318,5 +318,6 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
 
     Route::get('/settings', [AdminSettingController::class, 'index'])->name('settings.index');
     Route::post('/settings/toggle-vps-stock', [AdminSettingController::class, 'toggleVpsStock'])->name('settings.toggleVpsStock');
+    Route::post('/settings/toggle-email-verification', [AdminSettingController::class, 'toggleEmailVerification'])->name('settings.toggleEmailVerification');
     Route::post('/media/upload', [AdminMediaUploadController::class, 'upload'])->name('media.upload');
 });

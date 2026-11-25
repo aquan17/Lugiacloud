@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
+use App\Services\WelcomeOfferService;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -91,6 +92,8 @@ class AuthController extends Controller
             $myRefCode = strtoupper(Str::random(8));
         } while (User::where('ref_code', $myRefCode)->exists());
 
+        $requireEmailVerification = User::isEmailVerificationRequired();
+
         $user = User::create([
             'name' => $data['name'],
             'email' => strtolower(trim($data['email'])),
@@ -99,9 +102,20 @@ class AuthController extends Controller
             'balance' => 0,
             'ref_code' => $myRefCode,
             'referred_by' => $referrerId,
+            'email_verified_at' => $requireEmailVerification ? null : now(),
         ]);
 
         Auth::login($user);
+
+        if (!$requireEmailVerification) {
+            $welcomeOffer = app(WelcomeOfferService::class);
+            $granted = $welcomeOffer->grantToNewUser($user);
+            $msg = $granted
+                ? 'Đăng ký thành công! Quà thành viên mới: Giảm ' . $welcomeOffer->getConfig()['percent'] . '% đơn đầu tiên đã được lưu sẵn trong Ví Voucher của bạn.'
+                : 'Đăng ký thành công! Chào mừng bạn đến với LugiaCloud.';
+
+            return redirect()->intended(route('dashboard'))->with('success', $msg);
+        }
 
         try {
             event(new Registered($user));
