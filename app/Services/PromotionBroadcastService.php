@@ -37,27 +37,34 @@ class PromotionBroadcastService
 
         $queuedCount = 0;
         $batchIndex = 0;
+        $broadcastMailer = (string) config('mail.broadcast_mailer', 'broadcast');
+        $useCustomMailer = $broadcastMailer !== '' && is_array(config("mail.mailers.{$broadcastMailer}"));
 
         User::query()
             ->whereNotNull('email')
             ->where('email', '!=', '')
+            ->whereNotNull('email_verified_at')
             ->select(['id', 'name', 'email'])
             ->orderBy('id')
-            ->chunkById(100, function ($users) use ($campaign, $couponCodes, &$queuedCount, &$batchIndex) {
+            ->chunkById(100, function ($users) use ($campaign, $couponCodes, $broadcastMailer, $useCustomMailer, &$queuedCount, &$batchIndex) {
                 foreach ($users as $user) {
                     try {
-                        // Giãn cách mỗi 10 email cách nhau 2 giây để an toàn cho SMTP/Mailgun/SES
-                        $delaySeconds = intdiv($queuedCount, 10) * 2;
+                        // Giãn cách mỗi 5 email cách nhau 2 giây để an toàn cho API/SMTP rate-limit
+                        $delaySeconds = intdiv($queuedCount, 5) * 2;
                         $mailable = new PromotionCampaignLaunched(
                             campaign: $campaign,
                             userName: $user->name ?: 'bạn',
                             couponCodes: $couponCodes
                         );
 
+                        $pending = $useCustomMailer
+                            ? Mail::mailer($broadcastMailer)->to($user->email)
+                            : Mail::to($user->email);
+
                         if ($delaySeconds > 0) {
-                            Mail::to($user->email)->later(now()->addSeconds($delaySeconds), $mailable);
+                            $pending->later(now()->addSeconds($delaySeconds), $mailable);
                         } else {
-                            Mail::to($user->email)->queue($mailable);
+                            $pending->queue($mailable);
                         }
                         $queuedCount++;
                     } catch (\Throwable $e) {

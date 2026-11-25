@@ -2,7 +2,10 @@
 
 namespace App\Providers;
 
+use App\Mail\Transport\BrevoApiTransport;
+use App\Mail\Transport\MailjetApiTransport;
 use App\Mail\Transport\ResendApiTransport;
+use App\Mail\Transport\SmartFailoverTransport;
 use App\Services\CloudSunnyPricingService;
 use App\Services\CloudSunnyProxyPricingService;
 use App\Services\FlashSaleService;
@@ -43,6 +46,29 @@ class AppServiceProvider extends ServiceProvider
         Mail::extend('resend', function (array $config = []) {
             $apiKey = (string) ($config['key'] ?? config('mail.mailers.smtp.password') ?? '');
             return new ResendApiTransport($apiKey);
+        });
+
+        Mail::extend('brevo', function (array $config = []) {
+            $apiKey = (string) ($config['key'] ?? '');
+            $fromAddress = isset($config['from_address']) ? (string) $config['from_address'] : null;
+            $fromName = isset($config['from_name']) ? (string) $config['from_name'] : null;
+            return new BrevoApiTransport($apiKey, $fromAddress, $fromName);
+        });
+
+        Mail::extend('mailjet', function (array $config = []) {
+            $apiKey = (string) ($config['key'] ?? '');
+            $secretKey = (string) ($config['secret'] ?? '');
+            $fromAddress = isset($config['from_address']) ? (string) $config['from_address'] : null;
+            $fromName = isset($config['from_name']) ? (string) $config['from_name'] : null;
+            return new MailjetApiTransport($apiKey, $secretKey, $fromAddress, $fromName);
+        });
+
+        Mail::extend('smart_failover', function (array $config = []) {
+            $mailers = $config['mailers'] ?? ['resend', 'brevo'];
+            if (is_string($mailers)) {
+                $mailers = array_values(array_filter(array_map('trim', explode(',', $mailers))));
+            }
+            return new SmartFailoverTransport(is_array($mailers) ? $mailers : ['resend', 'brevo']);
         });
     }
 }

@@ -13,7 +13,9 @@ return [
     |
     */
 
-    'default' => env('MAIL_MAILER', 'smtp'),
+    'default' => env('MAIL_MAILER', 'smart'),
+
+    'broadcast_mailer' => env('MAIL_BROADCAST_MAILER', 'broadcast'),
 
     /*
     |--------------------------------------------------------------------------
@@ -34,9 +36,40 @@ return [
     */
 
     'mailers' => [
+        'smart' => [
+            'transport' => 'smart_failover',
+            'mailers' => array_values(array_filter(array_map(
+                'trim',
+                explode(',', (string) env('MAIL_FAILOVER_ORDER', 'resend,mailjet,brevo'))
+            ))),
+        ],
+
+        'broadcast' => [
+            'transport' => 'smart_failover',
+            'mailers' => array_values(array_filter(array_map(
+                'trim',
+                explode(',', (string) env('MAIL_BROADCAST_ORDER', 'mailjet,brevo,resend'))
+            ))),
+        ],
+
         'resend' => [
             'transport' => 'resend',
             'key' => env('RESEND_KEY', env('MAIL_PASSWORD')),
+        ],
+
+        'mailjet' => [
+            'transport' => 'mailjet',
+            'key' => env('MAILJET_API_KEY'),
+            'secret' => env('MAILJET_SECRET_KEY'),
+            'from_address' => env('MAILJET_FROM_ADDRESS'),
+            'from_name' => env('MAILJET_FROM_NAME'),
+        ],
+
+        'brevo' => [
+            'transport' => 'brevo',
+            'key' => env('BREVO_API_KEY'),
+            'from_address' => env('BREVO_FROM_ADDRESS'),
+            'from_name' => env('BREVO_FROM_NAME'),
         ],
 
         'smtp' => [
