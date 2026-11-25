@@ -15,9 +15,8 @@ class EventServiceProvider extends ServiceProvider
      * @var array<class-string, array<int, class-string>>
      */
     protected $listen = [
-        Registered::class => [
-            SendEmailVerificationNotification::class,
-        ],
+        // Laravel 12 đã tự động đăng ký Registered -> SendEmailVerificationNotification ở core;
+        // không khai báo lặp tại đây để tránh gửi 2 email xác thực mỗi lần đăng ký.
     ];
 
     /**

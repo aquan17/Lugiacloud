@@ -28,6 +28,6 @@
 
     <p style="margin:0;font-size:12px;color:#64748B;word-break:break-all;">
         Nếu nút bấm không hoạt động, hãy sao chép đường dẫn sau vào trình duyệt:<br>
-        <a href="{{ $resetUrl }}" target="_blank" style="color:#1D6AE5;text-decoration:none;">{{ $resetUrl }}</a>
+        <span style="color:#1D6AE5;font-family:monospace;">{{ $resetUrl }}</span>
     </p>
 @endsection
