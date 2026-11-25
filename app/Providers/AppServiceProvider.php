@@ -2,7 +2,6 @@
 
 namespace App\Providers;
 
-use App\Mail\Transport\BrevoApiTransport;
 use App\Mail\Transport\MailjetApiTransport;
 use App\Mail\Transport\ResendApiTransport;
 use App\Mail\Transport\SenderApiTransport;
@@ -47,13 +46,6 @@ class AppServiceProvider extends ServiceProvider
         Mail::extend('resend', function (array $config = []) {
             $apiKey = (string) ($config['key'] ?? config('mail.mailers.smtp.password') ?? '');
             return new ResendApiTransport($apiKey);
-        });
-
-        Mail::extend('brevo', function (array $config = []) {
-            $apiKey = (string) ($config['key'] ?? '');
-            $fromAddress = isset($config['from_address']) ? (string) $config['from_address'] : null;
-            $fromName = isset($config['from_name']) ? (string) $config['from_name'] : null;
-            return new BrevoApiTransport($apiKey, $fromAddress, $fromName);
         });
 
         Mail::extend('mailjet', function (array $config = []) {

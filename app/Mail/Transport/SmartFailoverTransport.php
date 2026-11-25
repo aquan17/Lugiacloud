@@ -86,9 +86,6 @@ class SmartFailoverTransport implements TransportInterface
         if ($transport === 'resend') {
             return trim((string) ($cfg['key'] ?? '')) !== '';
         }
-        if ($transport === 'brevo') {
-            return trim((string) ($cfg['key'] ?? '')) !== '';
-        }
         if ($transport === 'mailjet') {
             return trim((string) ($cfg['key'] ?? '')) !== ''
                 && trim((string) ($cfg['secret'] ?? '')) !== '';
