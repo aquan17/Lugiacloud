@@ -20,6 +20,14 @@ class EventServiceProvider extends ServiceProvider
     ];
 
     /**
+     * Tránh đăng ký lặp SendEmailVerificationNotification khi Laravel 12 core EventServiceProvider đã tự đăng ký.
+     */
+    protected function configureEmailVerification()
+    {
+        // Handled once by Illuminate\Foundation\Support\Providers\EventServiceProvider.
+    }
+
+    /**
      * Register any events for your application.
      *
      * @return void
