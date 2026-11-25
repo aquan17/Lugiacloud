@@ -1404,7 +1404,7 @@ function saveFlashSale() {
                                             <span>Ảnh Web (Desktop)</span>
                                         </span>
                                         <span class="px-1.5 py-0.5 rounded bg-blue-50 text-[#1D6AE5] font-mono-num text-[10px] font-bold">
-                                            1280 × 320 px (4:1)
+                                            {{ bannerForm.placement === 'popup_modal' ? '1200 × 800 px (3:2 / 4:5)' : '1280 × 320 px (4:1)' }}
                                         </span>
                                     </div>
 
@@ -1446,7 +1446,7 @@ function saveFlashSale() {
                                             <span>Ảnh Điện thoại (Mobile)</span>
                                         </span>
                                         <span class="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 font-mono-num text-[10px] font-bold">
-                                            800 × 450 px (16:9)
+                                            {{ bannerForm.placement === 'popup_modal' ? '800 × 1000 px (4:5 / 1:1)' : '800 × 450 px (16:9)' }}
                                         </span>
                                     </div>
 
