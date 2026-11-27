@@ -348,23 +348,47 @@ function submitReassign() {
 
             <!-- Transactions Table -->
             <div class="surface-card overflow-hidden rounded-2xl border border-slate-200/90 shadow-xs">
-                <div class="px-5 py-3.5 border-b border-slate-200 text-xs font-bold uppercase text-slate-700">
-                    Lịch sử giao dịch của máy chủ này
+                <div class="px-5 py-3.5 border-b border-slate-200 bg-slate-50/80 text-xs font-extrabold uppercase tracking-wider text-slate-700">
+                    Lịch sử giao dịch của máy chủ này ({{ transactions.length }})
                 </div>
                 <div v-if="transactions.length === 0" class="p-6 text-center text-xs text-slate-500">Chưa có giao dịch nào.</div>
-                <div v-else class="overflow-x-auto">
-                    <table class="w-full text-left border-collapse text-xs">
-                        <tbody class="divide-y divide-slate-200/80">
-                            <tr v-for="t in transactions" :key="t.id">
-                                <td class="py-3 px-4 font-mono font-bold text-[#0B1437]">{{ t.code }}</td>
-                                <td class="py-3 px-4 text-slate-700">{{ t.description }}</td>
-                                <td class="py-3 px-4 text-right font-mono-num font-bold">{{ formatVnd(t.amount) }}</td>
-                                <td class="py-3 px-4 text-right font-mono-num text-slate-500">Vốn: {{ formatVnd(t.provider_cost) }}</td>
-                                <td class="py-3 px-4 text-right font-mono-num text-slate-500">{{ t.created_at }}</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
+                <template v-else>
+                    <!-- Mobile stacked card view -->
+                    <div class="sm:hidden divide-y divide-slate-200/80 text-xs">
+                        <div v-for="t in transactions" :key="`m-${t.id}`" class="p-4 space-y-2">
+                            <div class="flex items-start justify-between gap-2">
+                                <div class="flex flex-wrap items-center gap-1.5 min-w-0">
+                                    <span class="px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200 font-mono font-bold text-[11px] text-[#0B1437]">{{ t.code }}</span>
+                                    <span v-if="t.status === 'refunded'" class="px-1.5 py-0.5 rounded bg-rose-50 border border-rose-200 text-[10.5px] font-bold text-rose-600">Đã hoàn tiền</span>
+                                </div>
+                                <span class="font-mono-num font-black text-sm shrink-0" :class="t.status === 'refunded' ? 'text-slate-400 line-through' : 'text-[#0B1437]'">
+                                    {{ formatVnd(t.amount) }}
+                                </span>
+                            </div>
+                            <div class="text-slate-700 leading-relaxed break-words">{{ t.description }}</div>
+                            <div class="flex items-center justify-between text-[11px] text-slate-500 pt-0.5">
+                                <span v-if="t.provider_cost > 0" class="font-mono-num">Vốn: {{ formatVnd(t.provider_cost) }}</span>
+                                <span v-else>&nbsp;</span>
+                                <span class="font-mono-num">{{ t.created_at }}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Desktop table view -->
+                    <div class="hidden sm:block overflow-x-auto">
+                        <table class="w-full text-left border-collapse text-xs">
+                            <tbody class="divide-y divide-slate-200/80">
+                                <tr v-for="t in transactions" :key="t.id" class="hover:bg-slate-50/70">
+                                    <td class="py-3 px-4 font-mono font-bold text-[#0B1437] whitespace-nowrap">{{ t.code }}</td>
+                                    <td class="py-3 px-4 text-slate-700">{{ t.description }}</td>
+                                    <td class="py-3 px-4 text-right font-mono-num font-bold whitespace-nowrap" :class="t.status === 'refunded' ? 'text-slate-400 line-through' : 'text-[#0B1437]'">{{ formatVnd(t.amount) }}</td>
+                                    <td class="py-3 px-4 text-right font-mono-num text-slate-500 whitespace-nowrap">Vốn: {{ formatVnd(t.provider_cost) }}</td>
+                                    <td class="py-3 px-4 text-right font-mono-num text-slate-500 whitespace-nowrap">{{ t.created_at }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </template>
             </div>
         </div>
 
