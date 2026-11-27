@@ -3,17 +3,23 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Mail\ServiceRenewed;
 use App\Models\ProxyInstance;
 use App\Models\Transaction;
 use App\Models\User;
+use App\Services\AffiliateService;
 use App\Services\CloudSunnyApiService;
 use App\Services\CloudSunnyProxyPricingService;
+use App\Services\WalletService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Inertia\Inertia;
+use RuntimeException;
 
 class ProxyController extends Controller
 {
@@ -139,12 +145,29 @@ class ProxyController extends Controller
      */
     public function show(ProxyInstance $proxy, CloudSunnyProxyPricingService $pricing)
     {
-        $proxy->load(['user:id,name,email,balance', 'cloudSunnyAccount:id,label,api_username']);
-        $prod = $pricing->findProductById((int) $proxy->product_id);
+        $proxy->load(['user:id,name,email,balance,proxy_discount_percent', 'cloudSunnyAccount:id,label,api_username']);
+        $owner = $proxy->user;
+        $prod = $pricing->findProductById((int) $proxy->product_id, $owner);
         $protocol = strtoupper($proxy->type_proxy ?: 'HTTP');
         $port = $protocol === 'SOCKS5' ? ($proxy->sock5_port ?: $proxy->port) : $proxy->port;
         $username = $protocol === 'SOCKS5' ? ($proxy->sock5_username ?: $proxy->username) : $proxy->username;
         $password = $protocol === 'SOCKS5' ? ($proxy->sock5_password ?: $proxy->password) : $proxy->password;
+
+        $allowedCycles = config('cloudsunny.proxy_billing_cycles', ['monthly', 'twomonthly', 'quarterly', 'semi_annually', 'annually']);
+        $renewQuotes = [];
+        if ($prod) {
+            foreach ($allowedCycles as $cycleKey) {
+                $q = $pricing->quoteProxyOrder($prod, 1, $cycleKey, $owner, true);
+                $meta = config("cloudsunny.billing_cycles.{$cycleKey}", []);
+                $renewQuotes[] = [
+                    'key' => $cycleKey,
+                    'label' => $meta['label'] ?? (($meta['months'] ?? 1) . ' Tháng'),
+                    'months' => (int) ($meta['months'] ?? 1),
+                    'price' => (int) $q['final_price'],
+                    'provider_cost' => (int) $q['provider_cost'],
+                ];
+            }
+        }
 
         $transactions = Transaction::where('proxy_instance_id', $proxy->id)
             ->latest()
@@ -185,13 +208,15 @@ class ProxyController extends Controller
                 'created_at' => $proxy->created_at?->format('d/m/Y H:i'),
                 'expires_at' => $proxy->expires_at?->format('d/m/Y H:i'),
                 'is_linked' => (bool) ($proxy->cloudSunnyAccount && $proxy->provider_proxy_id),
-                'user' => $proxy->user ? [
-                    'id' => $proxy->user->id,
-                    'name' => $proxy->user->name,
-                    'email' => $proxy->user->email,
-                    'balance' => (int) $proxy->user->balance,
+                'user' => $owner ? [
+                    'id' => $owner->id,
+                    'name' => $owner->name,
+                    'email' => $owner->email,
+                    'balance' => (int) $owner->balance,
+                    'proxy_discount_percent' => (int) $owner->proxy_discount_percent,
                 ] : null,
             ],
+            'renewQuotes' => $renewQuotes,
             'transactions' => $transactions,
         ]);
     }
@@ -294,6 +319,178 @@ class ProxyController extends Controller
         } catch (\Throwable $e) {
             return back()->with('error', 'Đổi IP Proxy thất bại: ' . CloudSunnyApiService::sanitizeErrorMessage($e->getMessage()));
         }
+    }
+
+    /**
+     * Admin gia hạn hộ Proxy (tùy chọn trừ ví chủ sở hữu hoặc gia hạn trực tiếp không thu phí ví khách).
+     */
+    public function renew(
+        Request $request,
+        ProxyInstance $proxy,
+        CloudSunnyApiService $api,
+        CloudSunnyProxyPricingService $pricing,
+        WalletService $wallet
+    ) {
+        if (!$proxy->cloudSunnyAccount || !$proxy->provider_proxy_id) {
+            return back()->with('error', 'Proxy chưa liên kết tới hạ tầng gốc.');
+        }
+        if ($proxy->normalizedState() === 'deleted') {
+            return back()->with('error', 'Proxy này đã bị hủy/hết hạn thu hồi, không thể gia hạn thêm.');
+        }
+
+        $allowedCycles = config('cloudsunny.proxy_billing_cycles', ['monthly', 'twomonthly', 'quarterly', 'semi_annually', 'annually']);
+        $validated = $request->validate([
+            'billing_cycle' => 'required|in:' . implode(',', $allowedCycles),
+            'charge_owner' => 'required|boolean',
+            'admin_note' => 'nullable|string|max:200',
+        ]);
+
+        $owner = $proxy->user;
+        $chargeOwner = (bool) $validated['charge_owner'];
+        if ($chargeOwner && !$owner) {
+            return back()->with('error', 'Proxy chưa gắn với chủ sở hữu để trừ ví.');
+        }
+
+        $product = $pricing->findProductById((int) $proxy->product_id, $owner);
+        if (!$product) {
+            return back()->with('error', 'Không tìm thấy cấu hình giá gia hạn cho gói Proxy này.');
+        }
+
+        $cycle = $validated['billing_cycle'];
+        $quote = $pricing->quoteProxyOrder($product, 1, $cycle, $owner, true);
+        $amount = $chargeOwner ? (int) $quote['final_price'] : 0;
+        $providerCost = (int) $quote['provider_cost'];
+        $months = (int) (config("cloudsunny.billing_cycles.{$cycle}.months") ?? 1);
+        $cycleLabel = config("cloudsunny.billing_cycles.{$cycle}.label") ?? "{$months} Tháng";
+        $noteSuffix = trim((string) ($validated['admin_note'] ?? '')) !== '' ? ' · ' . trim((string) $validated['admin_note']) : '';
+
+        if ($chargeOwner && $owner->balance < $amount) {
+            return back()->with('error', "Ví chủ sở hữu ({$owner->email}) không đủ số dư (cần " . number_format($amount, 0, ',', '.') . 'đ).');
+        }
+
+        $lock = Cache::lock("proxy_admin_renew_{$proxy->id}", 60);
+        if (!$lock->get()) {
+            return back()->with('error', 'Proxy này đang xử lý yêu cầu gia hạn khác.');
+        }
+
+        $transaction = null;
+        try {
+            if ($chargeOwner) {
+                $transaction = $wallet->debit($owner, $amount, [
+                    'proxy_instance_id' => $proxy->id,
+                    'campaign_id' => $quote['campaign']['id'] ?? null,
+                    'type' => 'renew',
+                    'provider_cost' => $providerCost,
+                    'discount_amount' => (int) ($quote['discount_amount'] ?? 0),
+                    'description' => "[Admin gia hạn hộ] Proxy #{$proxy->id} ({$cycleLabel}){$noteSuffix}",
+                ]);
+            }
+
+            $apiClient = $api->forAccount($proxy->cloudSunnyAccount);
+            $apiClient->actionProxy([(int) $proxy->provider_proxy_id], 'renew', [
+                'billing_cycle' => $cycle,
+            ]);
+
+            $baseDate = $proxy->expires_at && $proxy->expires_at->isFuture() ? $proxy->expires_at->copy() : Carbon::now();
+            $expiresAt = $baseDate->addMonths($months);
+
+            try {
+                $remote = $apiClient->getProxy((int) $proxy->provider_proxy_id);
+                if ($remote) {
+                    foreach (['next_due_date', 'expires_at', 'expired_at', 'expire_at', 'expiration_at', 'end_at', 'end_date', 'ngay_het_han'] as $key) {
+                        if (!empty($remote[$key])) {
+                            try {
+                                $expiresAt = Carbon::parse($remote[$key]);
+                                break;
+                            } catch (\Throwable $ignore) {
+                            }
+                        }
+                    }
+                }
+            } catch (\Throwable $ignore) {
+            }
+
+            $proxy->update([
+                'expires_at' => $expiresAt,
+                'paid_amount' => (int) $proxy->paid_amount + $amount,
+                'billing_cycle' => $cycle,
+                'status' => 'Hoạt động',
+            ]);
+
+            if (!$chargeOwner && $owner) {
+                Transaction::create([
+                    'user_id' => $owner->id,
+                    'proxy_instance_id' => $proxy->id,
+                    'type' => 'renew',
+                    'status' => 'completed',
+                    'amount' => 0,
+                    'provider_cost' => $providerCost,
+                    'discount_amount' => 0,
+                    'balance_before' => (int) $owner->balance,
+                    'balance_after' => (int) $owner->balance,
+                    'description' => "[Admin gia hạn trực tiếp · 0đ ví khách] Proxy #{$proxy->id} ({$cycleLabel}){$noteSuffix}",
+                ]);
+            }
+
+            if ($chargeOwner && $transaction) {
+                app(AffiliateService::class)->processCommission($owner, $amount, 'renew_proxy', "txn_{$transaction->id}");
+            }
+
+            if ($owner && !empty($owner->email)) {
+                try {
+                    Mail::to($owner->email)->queue(new ServiceRenewed(
+                        userName: $owner->name ?: 'bạn',
+                        serviceType: 'proxy',
+                        serviceName: "Proxy #{$proxy->id}",
+                        ipAddress: $proxy->ip ? "{$proxy->ip}:{$proxy->port}" : null,
+                        cycleLabel: $cycleLabel,
+                        amountPaid: $amount,
+                        newExpiresAt: $expiresAt->format('d/m/Y H:i'),
+                        manageUrl: route('proxy.show', $proxy->id),
+                        isAuto: false
+                    ));
+                } catch (\Throwable $ignore) {
+                }
+            }
+
+            Log::info('Admin renewed Proxy', [
+                'admin_id' => Auth::id(),
+                'proxy_id' => $proxy->id,
+                'cycle' => $cycle,
+                'charge_owner' => $chargeOwner,
+                'amount' => $amount,
+                'provider_cost' => $providerCost,
+            ]);
+
+            return back()->with('success', "Đã gia hạn Proxy #{$proxy->id} thêm {$cycleLabel}" . ($chargeOwner ? ' (trừ ví khách ' . number_format($amount, 0, ',', '.') . 'đ).' : ' (không trừ ví khách).'));
+        } catch (RuntimeException $e) {
+            if ($e->getMessage() === 'INSUFFICIENT_BALANCE') {
+                return back()->with('error', 'Số dư ví chủ sở hữu không đủ.');
+            }
+            if ($transaction) {
+                $wallet->refundTransaction($transaction, CloudSunnyApiService::sanitizeErrorMessage($e->getMessage()));
+            }
+            return back()->with('error', 'Gia hạn Proxy thất bại' . ($transaction ? ' (đã hoàn tiền ví khách)' : '') . ': ' . CloudSunnyApiService::sanitizeErrorMessage($e->getMessage()));
+        } catch (\Throwable $e) {
+            if ($transaction) {
+                $wallet->refundTransaction($transaction, CloudSunnyApiService::sanitizeErrorMessage($e->getMessage()));
+            }
+            return back()->with('error', 'Gia hạn Proxy thất bại' . ($transaction ? ' (đã hoàn tiền ví khách)' : '') . ': ' . CloudSunnyApiService::sanitizeErrorMessage($e->getMessage()));
+        } finally {
+            $lock->release();
+        }
+    }
+
+    public function toggleAutoRenew(ProxyInstance $proxy)
+    {
+        if ($proxy->normalizedState() === 'deleted') {
+            return back()->with('error', 'Proxy đã ngừng hoạt động, không thể bật tự động gia hạn.');
+        }
+
+        $next = !$proxy->is_auto_renew;
+        $proxy->update(['is_auto_renew' => $next]);
+
+        return back()->with('success', $next ? "Đã bật tự động gia hạn cho Proxy #{$proxy->id}." : "Đã tắt tự động gia hạn cho Proxy #{$proxy->id}.");
     }
 
     /**

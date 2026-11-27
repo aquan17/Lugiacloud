@@ -6,12 +6,17 @@ use App\Http\Controllers\Controller;
 use App\Models\DedicatedServer;
 use App\Models\Transaction;
 use App\Models\User;
+use App\Services\AffiliateService;
 use App\Services\CloudSunnyApiService;
+use App\Services\CloudSunnyDedicatedPricingService;
+use App\Services\WalletService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
+use RuntimeException;
 
 class DedicatedServerController extends Controller
 {
@@ -94,9 +99,28 @@ class DedicatedServerController extends Controller
         ]);
     }
 
-    public function show(DedicatedServer $server)
+    public function show(DedicatedServer $server, CloudSunnyDedicatedPricingService $pricing)
     {
-        $server->load(['user:id,name,email,balance', 'cloudSunnyAccount:id,label,api_username']);
+        $server->load(['user:id,name,email,balance,discount_percent', 'cloudSunnyAccount:id,label,api_username']);
+        $owner = $server->user;
+
+        $product = $pricing->findByProductId((int) $server->provider_product_id, $owner)
+            ?? $pricing->findBySlug((string) $server->plan_slug, $owner);
+        $renewCycles = [];
+        if ($product) {
+            foreach ($product['cycles'] ?? [] as $cycleKey => $cyc) {
+                $q = $pricing->computeCycleQuote($product, $cycleKey, 1, true);
+                if ($q) {
+                    $renewCycles[] = [
+                        'key' => $cycleKey,
+                        'label' => $q['cycle_label'],
+                        'months' => (int) $q['months'],
+                        'price' => (int) $q['total_price'],
+                        'provider_cost' => (int) $q['total_provider_cost'],
+                    ];
+                }
+            }
+        }
 
         $transactions = Transaction::where('dedicated_server_id', $server->id)
             ->latest()
@@ -126,6 +150,7 @@ class DedicatedServerController extends Controller
                 'status' => $server->displayStatus(),
                 'raw_status' => $server->status,
                 'state' => $server->normalizedState(),
+                'can_renew' => $server->canRenew(),
                 'billing_cycle_label' => $server->billing_cycle_label,
                 'is_auto_renew' => (bool) $server->is_auto_renew,
                 'public_ip' => $server->public_ip,
@@ -143,13 +168,14 @@ class DedicatedServerController extends Controller
                 'created_at' => $server->created_at?->format('d/m/Y H:i'),
                 'expires_at' => $server->expires_at?->format('d/m/Y H:i'),
                 'handed_over_at' => $server->handed_over_at?->format('d/m/Y H:i'),
-                'user' => $server->user ? [
-                    'id' => $server->user->id,
-                    'name' => $server->user->name,
-                    'email' => $server->user->email,
-                    'balance' => (int) $server->user->balance,
+                'user' => $owner ? [
+                    'id' => $owner->id,
+                    'name' => $owner->name,
+                    'email' => $owner->email,
+                    'balance' => (int) $owner->balance,
                 ] : null,
             ],
+            'renewCycles' => $renewCycles,
             'transactions' => $transactions,
         ]);
     }
@@ -186,6 +212,162 @@ class DedicatedServerController extends Controller
         } catch (\Throwable $e) {
             return back()->with('error', 'Đồng bộ thất bại: ' . CloudSunnyApiService::sanitizeErrorMessage($e->getMessage()));
         }
+    }
+
+    /**
+     * Admin gia hạn hộ Máy chủ vật lý (tùy chọn trừ ví chủ sở hữu hoặc gia hạn trực tiếp không thu phí ví khách).
+     */
+    public function renew(
+        Request $request,
+        DedicatedServer $server,
+        CloudSunnyDedicatedPricingService $pricing,
+        CloudSunnyApiService $api,
+        WalletService $wallet
+    ) {
+        if (!$server->canRenew()) {
+            return back()->with('error', 'Chỉ có thể gia hạn Máy chủ vật lý đang Hoạt động hoặc đã Hết hạn (chưa bị xóa).');
+        }
+
+        $validated = $request->validate([
+            'billing_cycle' => 'required|in:monthly,twomonthly,quarterly,semi_annually,annually,biennially,triennially',
+            'charge_owner' => 'required|boolean',
+            'admin_note' => 'nullable|string|max:200',
+        ]);
+
+        $owner = $server->user;
+        $chargeOwner = (bool) $validated['charge_owner'];
+        if ($chargeOwner && !$owner) {
+            return back()->with('error', 'Máy chủ chưa gắn tài khoản chủ sở hữu để trừ ví.');
+        }
+
+        $product = $pricing->findByProductId((int) $server->provider_product_id, $owner)
+            ?? $pricing->findBySlug((string) $server->plan_slug, $owner);
+        if (!$product) {
+            return back()->with('error', 'Không tìm thấy cấu hình giá gia hạn cho máy chủ này.');
+        }
+
+        $quote = $pricing->computeCycleQuote($product, $validated['billing_cycle'], 1, true);
+        if (!$quote) {
+            return back()->with('error', 'Chu kỳ gia hạn này không khả dụng.');
+        }
+
+        $amount = $chargeOwner ? (int) $quote['total_price'] : 0;
+        $providerCost = (int) $quote['total_provider_cost'];
+        $noteSuffix = trim((string) ($validated['admin_note'] ?? '')) !== '' ? ' · ' . trim((string) $validated['admin_note']) : '';
+
+        if ($chargeOwner && $owner->balance < $amount) {
+            return back()->with('error', "Ví chủ sở hữu ({$owner->email}) không đủ số dư (" . number_format($amount, 0, ',', '.') . 'đ).');
+        }
+
+        $lock = Cache::lock("dedicated_renew_{$server->id}", 45);
+        if (!$lock->get()) {
+            return back()->with('error', 'Máy chủ này đang xử lý yêu cầu gia hạn khác.');
+        }
+
+        $apiClient = $api->forAccount($server->cloudSunnyAccount);
+        try {
+            $priceCheck = $apiClient->checkPrice('renew_server', [
+                'ids' => [(int) $server->provider_server_id],
+                'billing_cycle' => $validated['billing_cycle'],
+            ]);
+            if (!empty($priceCheck['total']) && (int) $priceCheck['total'] > 0) {
+                $providerCost = (int) $priceCheck['total'];
+            }
+        } catch (\Throwable $e) {
+            $lock->release();
+            return back()->with('error', 'Không thể gia hạn lúc này: ' . CloudSunnyApiService::sanitizeErrorMessage($e->getMessage()));
+        }
+
+        $transaction = null;
+        try {
+            if ($chargeOwner) {
+                $transaction = $wallet->debit($owner, $amount, [
+                    'dedicated_server_id' => $server->id,
+                    'type' => 'renew',
+                    'provider_cost' => $providerCost,
+                    'discount_amount' => (int) $quote['discount_amount'],
+                    'description' => "[Admin gia hạn hộ] Máy chủ vật lý {$server->label} ({$quote['cycle_label']}){$noteSuffix}",
+                ]);
+            }
+
+            $apiClient->renewServer((int) $server->provider_server_id, $validated['billing_cycle']);
+
+            $newExpiry = ($server->expires_at && $server->expires_at->isFuture() ? $server->expires_at->copy() : now())
+                ->addMonths((int) $quote['months']);
+
+            $server->update([
+                'billing_cycle' => $validated['billing_cycle'],
+                'status' => 'Hoạt động',
+                'expires_at' => $newExpiry,
+                'paid_amount' => (int) $server->paid_amount + $amount,
+                'provider_cost' => (int) $server->provider_cost + $providerCost,
+            ]);
+
+            try {
+                $remote = $apiClient->getServer((int) $server->provider_server_id);
+                if (!empty($remote['next_due_date'])) {
+                    $server->update(['expires_at' => Carbon::parse($remote['next_due_date']), 'provider_payload' => $remote]);
+                }
+            } catch (\Throwable $ignore) {
+            }
+
+            if (!$chargeOwner && $owner) {
+                Transaction::create([
+                    'user_id' => $owner->id,
+                    'dedicated_server_id' => $server->id,
+                    'type' => 'renew',
+                    'status' => 'completed',
+                    'amount' => 0,
+                    'provider_cost' => $providerCost,
+                    'discount_amount' => 0,
+                    'balance_before' => (int) $owner->balance,
+                    'balance_after' => (int) $owner->balance,
+                    'description' => "[Admin gia hạn trực tiếp · 0đ ví khách] Máy chủ vật lý {$server->label} ({$quote['cycle_label']}){$noteSuffix}",
+                ]);
+            }
+
+            if ($chargeOwner && $transaction) {
+                app(AffiliateService::class)->processCommission($owner, $amount, 'renew_server', "txn_{$transaction->id}");
+            }
+
+            Log::info('Admin renewed DedicatedServer', [
+                'admin_id' => Auth::id(),
+                'server_id' => $server->id,
+                'cycle' => $validated['billing_cycle'],
+                'charge_owner' => $chargeOwner,
+                'amount' => $amount,
+                'provider_cost' => $providerCost,
+            ]);
+
+            return back()->with('success', "Đã gia hạn Máy chủ vật lý {$server->label} thêm {$quote['cycle_label']}" . ($chargeOwner ? ' (trừ ví khách ' . number_format($amount, 0, ',', '.') . 'đ).' : ' (không trừ ví khách).'));
+        } catch (RuntimeException $e) {
+            if ($e->getMessage() === 'INSUFFICIENT_BALANCE') {
+                return back()->with('error', 'Số dư ví chủ sở hữu không đủ.');
+            }
+            if ($transaction) {
+                $wallet->refundTransaction($transaction, CloudSunnyApiService::sanitizeErrorMessage($e->getMessage()));
+            }
+            return back()->with('error', 'Gia hạn thất bại' . ($transaction ? ' (đã hoàn tiền ví khách)' : '') . ': ' . CloudSunnyApiService::sanitizeErrorMessage($e->getMessage()));
+        } catch (\Throwable $e) {
+            if ($transaction) {
+                $wallet->refundTransaction($transaction, CloudSunnyApiService::sanitizeErrorMessage($e->getMessage()));
+            }
+            return back()->with('error', 'Gia hạn thất bại' . ($transaction ? ' (đã hoàn tiền ví khách)' : '') . ': ' . CloudSunnyApiService::sanitizeErrorMessage($e->getMessage()));
+        } finally {
+            $lock->release();
+        }
+    }
+
+    public function toggleAutoRenew(DedicatedServer $server)
+    {
+        if ($server->normalizedState() === 'deleted') {
+            return back()->with('error', 'Máy chủ đã ngừng hoạt động, không thể bật tự động gia hạn.');
+        }
+
+        $next = !$server->is_auto_renew;
+        $server->update(['is_auto_renew' => $next]);
+
+        return back()->with('success', $next ? "Đã bật tự động gia hạn cho Máy chủ {$server->label}." : "Đã tắt tự động gia hạn cho Máy chủ {$server->label}.");
     }
 
     /**

@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
 import StatusBadge from '@/Components/StatusBadge.vue';
 import AdminUserPicker from '@/Components/Admin/AdminUserPicker.vue';
 import { formatVnd } from '@/Composables/useFormat';
+import { askConfirm } from '@/Composables/useConfirmAction';
 import {
     ArrowLeft,
     Cpu,
@@ -16,17 +17,65 @@ import {
     EyeOff,
     Loader2,
     X,
+    CalendarClock,
 } from 'lucide-vue-next';
 
 const props = defineProps<{
     server: any;
+    renewCycles: Array<{ key: string; label: string; months: number; price: number; provider_cost: number }>;
     transactions: Array<any>;
 }>();
 
 const syncing = ref(false);
+const togglingAuto = ref(false);
 const showRootPass = ref(false);
 const showIpmiPass = ref(false);
 const showReassignModal = ref(false);
+const showRenewModal = ref(false);
+
+const renewForm = useForm({
+    billing_cycle: 'monthly',
+    charge_owner: Boolean(props.server.user),
+    admin_note: '',
+});
+const selectedRenewCycle = computed(
+    () => props.renewCycles.find((c) => c.key === renewForm.billing_cycle) || props.renewCycles[0] || null
+);
+
+function openRenewModal() {
+    renewForm.clearErrors();
+    renewForm.billing_cycle = props.renewCycles[0]?.key || 'monthly';
+    renewForm.charge_owner = Boolean(props.server.user);
+    renewForm.admin_note = '';
+    showRenewModal.value = true;
+}
+
+function submitRenew() {
+    const q = selectedRenewCycle.value;
+    const modeText = renewForm.charge_owner
+        ? `Trừ ví khách ${props.server.user?.email}: ${formatVnd(q?.price || 0)}`
+        : `KHÔNG trừ ví khách (0đ — chỉ trừ vốn gốc ~${formatVnd(q?.provider_cost || 0)} trên CloudSunny)`;
+    askConfirm({
+        title: `Gia hạn hộ Máy chủ ${props.server.label}`,
+        message: `Chu kỳ: ${q?.label || renewForm.billing_cycle}\n• ${modeText}`,
+        confirmText: 'Gia hạn ngay',
+        variant: 'primary',
+        onConfirm: () => {
+            renewForm.post(`/admin/servers/${props.server.id}/renew`, {
+                preserveScroll: true,
+                onSuccess: () => (showRenewModal.value = false),
+            });
+        },
+    });
+}
+
+function toggleAutoRenew() {
+    togglingAuto.value = true;
+    router.post(`/admin/servers/${props.server.id}/auto-renew`, {}, {
+        preserveScroll: true,
+        onFinish: () => (togglingAuto.value = false),
+    });
+}
 
 const handoverForm = useForm({
     public_ip: props.server.public_ip || '',
@@ -113,6 +162,15 @@ function submitReassign() {
 
                     <div class="flex flex-wrap items-center gap-2 text-xs">
                         <button
+                            v-if="server.can_renew && renewCycles.length > 0"
+                            type="button"
+                            @click="openRenewModal"
+                            class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[#1D6AE5] hover:bg-[#1557C0] text-white font-bold cursor-pointer transition"
+                        >
+                            <CalendarClock class="w-3.5 h-3.5" />
+                            <span>Gia hạn hộ</span>
+                        </button>
+                        <button
                             v-if="server.is_linked"
                             type="button"
                             :disabled="syncing"
@@ -165,7 +223,19 @@ function submitReassign() {
                     <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80">
                         <div class="text-slate-500 font-bold uppercase text-[10.5px]">Hết hạn &amp; Chu kỳ</div>
                         <div class="font-mono-num font-extrabold text-sm text-[#0B1437] mt-1">{{ server.expires_at || 'Chờ bàn giao' }}</div>
-                        <div class="text-[11px] text-slate-600 mt-0.5">{{ server.billing_cycle_label }} · Auto-renew: {{ server.is_auto_renew ? 'Bật' : 'Tắt' }}</div>
+                        <div class="text-[11px] text-slate-600 mt-0.5 flex items-center justify-between gap-2">
+                            <span>{{ server.billing_cycle_label }} · Auto: <strong>{{ server.is_auto_renew ? 'Bật' : 'Tắt' }}</strong></span>
+                            <button
+                                v-if="server.state !== 'deleted'"
+                                type="button"
+                                :disabled="togglingAuto"
+                                @click="toggleAutoRenew"
+                                class="px-2 py-0.5 rounded border text-[10.5px] font-bold cursor-pointer transition"
+                                :class="server.is_auto_renew ? 'border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-100'"
+                            >
+                                {{ server.is_auto_renew ? 'Tắt' : 'Bật' }}
+                            </button>
+                        </div>
                     </div>
 
                     <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80">
@@ -296,6 +366,63 @@ function submitReassign() {
                     </table>
                 </div>
             </div>
+        </div>
+
+        <!-- Renew Modal -->
+        <div v-if="showRenewModal" class="fixed inset-0 z-50 bg-slate-950/50 flex items-center justify-center p-4" @click.self="!renewForm.processing && (showRenewModal = false)">
+            <form @submit.prevent="submitRenew" class="w-full max-w-lg rounded-2xl bg-white border border-slate-200 shadow-xl p-6 space-y-4 text-xs">
+                <div class="flex items-center justify-between pb-3 border-b border-slate-200">
+                    <div>
+                        <h3 class="text-sm font-extrabold text-[#0B1437]">Gia hạn hộ Máy chủ — {{ server.label }}</h3>
+                        <p class="text-[11px] text-slate-500 mt-0.5">Hạn hiện tại: {{ server.expires_at || '—' }} · Ví chủ sở hữu: {{ formatVnd(server.user?.balance || 0) }}</p>
+                    </div>
+                    <button type="button" @click="!renewForm.processing && (showRenewModal = false)" class="text-slate-400 hover:text-slate-700 cursor-pointer"><X class="w-4 h-4" /></button>
+                </div>
+
+                <div>
+                    <label class="block font-bold text-slate-700 mb-1.5">Chọn chu kỳ gia hạn (không tính phí cài đặt)</label>
+                    <select v-model="renewForm.billing_cycle" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 bg-white font-bold">
+                        <option v-for="c in renewCycles" :key="c.key" :value="c.key">
+                            {{ c.label }} — Giá khách: {{ formatVnd(c.price) }} (Vốn gốc: {{ formatVnd(c.provider_cost) }})
+                        </option>
+                    </select>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <button
+                        type="button"
+                        :disabled="!server.user"
+                        @click="renewForm.charge_owner = true"
+                        class="p-3 rounded-xl border text-left cursor-pointer transition disabled:opacity-50"
+                        :class="renewForm.charge_owner ? 'border-[#1D6AE5] bg-blue-50/70 ring-1 ring-[#1D6AE5]' : 'border-slate-200 hover:bg-slate-50'"
+                    >
+                        <div class="font-extrabold text-[#0B1437]">Trừ ví chủ sở hữu</div>
+                        <div class="text-[11px] text-slate-600 mt-0.5">Trừ {{ formatVnd(selectedRenewCycle?.price || 0) }} &amp; tính doanh thu</div>
+                    </button>
+                    <button
+                        type="button"
+                        @click="renewForm.charge_owner = false"
+                        class="p-3 rounded-xl border text-left cursor-pointer transition"
+                        :class="!renewForm.charge_owner ? 'border-amber-500 bg-amber-50/70 ring-1 ring-amber-500' : 'border-slate-200 hover:bg-slate-50'"
+                    >
+                        <div class="font-extrabold text-[#0B1437]">Không trừ ví khách (0đ)</div>
+                        <div class="text-[11px] text-slate-600 mt-0.5">Chỉ gọi CloudSunny, ghi sổ vốn gốc</div>
+                    </button>
+                </div>
+
+                <div>
+                    <label class="block font-semibold text-slate-700 mb-1">Ghi chú nội bộ (tùy chọn)</label>
+                    <input v-model="renewForm.admin_note" type="text" placeholder="VD: Khách chuyển khoản trực tiếp" class="w-full px-3 py-2 rounded-xl border border-slate-300" />
+                </div>
+
+                <div class="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                    <button type="button" @click="!renewForm.processing && (showRenewModal = false)" class="px-4 py-2 rounded-xl border border-slate-200 font-bold text-slate-600 cursor-pointer">Hủy</button>
+                    <button type="submit" :disabled="renewForm.processing || !selectedRenewCycle" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#1D6AE5] hover:bg-[#1557C0] text-white font-bold cursor-pointer disabled:opacity-50">
+                        <Loader2 v-if="renewForm.processing" class="w-3.5 h-3.5 animate-spin" />
+                        <span>Gia hạn Máy chủ</span>
+                    </button>
+                </div>
+            </form>
         </div>
 
         <!-- Reassign Modal -->

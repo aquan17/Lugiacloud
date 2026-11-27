@@ -3,9 +3,11 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Mail\ServiceRenewed;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Models\VpsInstance;
+use App\Services\AffiliateService;
 use App\Services\CloudSunnyApiService;
 use App\Services\CloudSunnyPricingService;
 use App\Services\WalletService;
@@ -15,7 +17,9 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Inertia\Inertia;
+use RuntimeException;
 
 class InstanceController extends Controller
 {
@@ -131,9 +135,10 @@ class InstanceController extends Controller
      */
     public function show(VpsInstance $vps, CloudSunnyPricingService $pricing)
     {
-        $vps->load(['user:id,name,email,balance', 'cloudSunnyAccount:id,label,api_username']);
+        $vps->load(['user:id,name,email,balance,discount_percent', 'cloudSunnyAccount:id,label,api_username']);
 
-        $plan = $pricing->getPlan((string) $vps->plan_id);
+        $owner = $vps->user;
+        $plan = $pricing->getPlan((string) $vps->plan_id, $owner);
         $images = $pricing->getImages((int) ($vps->provider_product_id ?: 1));
         $osMeta = $images[$vps->provider_os_id] ?? null;
         $osLabel = $osMeta['label'] ?? ($vps->provider_payload['os'] ?? 'Linux / Windows');
@@ -141,6 +146,37 @@ class InstanceController extends Controller
         $daysUntilExpiry = $vps->expires_at
             ? (int) now()->startOfDay()->diffInDays($vps->expires_at->copy()->startOfDay(), false)
             : null;
+
+        // Tính bảng báo giá gia hạn 7 chu kỳ cho chủ sở hữu (kèm giá vốn để Admin đối chiếu)
+        $addonCpuCur = max(0, (int) $vps->cpu - (int) ($plan['cores'] ?? $vps->cpu));
+        $addonRamCur = max(0, (int) $vps->ram - (int) ($plan['ram'] ?? $vps->ram));
+        $addonDiskCur = max(0, (int) $vps->disk - (int) ($plan['disk'] ?? $vps->disk));
+        $renewQuotes = [];
+        foreach (config('cloudsunny.billing_cycles', []) as $cycleKey => $meta) {
+            if ($plan) {
+                $q = $pricing->quoteCycleForPlan($plan, $cycleKey, $owner, $addonCpuCur, $addonRamCur, $addonDiskCur, true);
+                $renewQuotes[$cycleKey] = [
+                    'key' => $cycleKey,
+                    'label' => $meta['label'] ?? ($meta['months'] . ' Tháng'),
+                    'months' => (int) ($meta['months'] ?? 1),
+                    'price' => (int) $q['final_price'],
+                    'list_price' => (int) $q['list_price'],
+                    'provider_cost' => (int) $q['provider_cost'],
+                ];
+            }
+        }
+
+        // Hệ số tính phí nâng cấp phần cứng theo thời gian còn lại (khớp quoteMidCycleUpgrade)
+        $daysRemaining = $vps->expires_at ? max(1, (int) now()->diffInDays($vps->expires_at, false)) : 30;
+        $fullMonths = floor($daysRemaining / 30);
+        $remDays = $daysRemaining % 30;
+        $chargeFactor = $fullMonths + ($remDays > 15 ? 1 : ($remDays > 0 ? 0.5 : 0));
+        $chargeFactor = max(0.5, $chargeFactor);
+
+        $addonRates = $pricing->getAddonRates();
+        $changeIpCost = (int) ($addonRates['cost_change_ip'] ?? 20000);
+        $changeIpBase = (int) ($addonRates['change_ip'] ?? 30000);
+        $changeIpPrice = $owner ? max($changeIpCost, $pricing->applyUserDiscount($changeIpBase, $owner)) : $changeIpBase;
 
         $transactions = Transaction::where('vps_instance_id', $vps->id)
             ->latest()
@@ -190,16 +226,35 @@ class InstanceController extends Controller
                 'created_at' => $vps->created_at?->format('d/m/Y H:i'),
                 'expires_at' => $vps->expires_at?->format('d/m/Y H:i'),
                 'days_until_expiry' => $daysUntilExpiry,
+                'is_expired' => $vps->isExpired(),
                 'is_deleted' => $vps->isOverdue5Days(),
                 'is_linked' => (bool) ($vps->cloudSunnyAccount && $vps->provider_vps_id),
-                'user' => $vps->user ? [
-                    'id' => $vps->user->id,
-                    'name' => $vps->user->name,
-                    'email' => $vps->user->email,
-                    'balance' => (int) $vps->user->balance,
+                'user' => $owner ? [
+                    'id' => $owner->id,
+                    'name' => $owner->name,
+                    'email' => $owner->email,
+                    'balance' => (int) $owner->balance,
+                    'discount_percent' => (int) $owner->discount_percent,
                 ] : null,
             ],
             'images' => array_values($images),
+            'renewQuotes' => array_values($renewQuotes),
+            'upgradeMeta' => [
+                'days_remaining' => $daysRemaining,
+                'charge_factor' => $chargeFactor,
+                'cpu_monthly' => (int) ($addonRates['cpu_monthly'] ?? 25000),
+                'ram_monthly' => (int) ($addonRates['ram_monthly'] ?? 25000),
+                'disk_10gb_monthly' => (int) ($addonRates['disk_10gb_monthly'] ?? 15000),
+                'cost_cpu_monthly' => (int) ($addonRates['cost_cpu_monthly'] ?? 16200),
+                'cost_ram_monthly' => (int) ($addonRates['cost_ram_monthly'] ?? 16200),
+                'cost_disk_10gb_monthly' => (int) ($addonRates['cost_disk_10gb_monthly'] ?? 5400),
+                'owner_discount_percent' => (int) ($owner?->discount_percent ?? 0),
+            ],
+            'changeIpMeta' => [
+                'active' => !empty($addonRates['change_ip_active']),
+                'price' => $changeIpPrice,
+                'provider_cost' => $changeIpCost,
+            ],
             'transactions' => $transactions,
         ]);
     }
@@ -338,6 +393,431 @@ class InstanceController extends Controller
         } catch (\Throwable $e) {
             return back()->with('error', 'Mở rộng ổ cứng thất bại: ' . CloudSunnyApiService::sanitizeErrorMessage($e->getMessage()));
         }
+    }
+
+    /**
+     * Admin gia hạn hộ VPS (tùy chọn trừ ví chủ sở hữu hoặc gia hạn trực tiếp không thu phí ví khách).
+     */
+    public function renew(
+        Request $request,
+        VpsInstance $vps,
+        CloudSunnyApiService $api,
+        CloudSunnyPricingService $pricing,
+        WalletService $wallet
+    ) {
+        if (!$vps->cloudSunnyAccount || !$vps->provider_vps_id) {
+            return back()->with('error', 'VPS chưa liên kết tới hạ tầng gốc.');
+        }
+        if ($vps->isOverdue5Days()) {
+            return back()->with('error', 'VPS đã quá hạn hơn 5 ngày và bị hủy, không thể gia hạn.');
+        }
+
+        $allowedCycles = array_keys(config('cloudsunny.billing_cycles', ['monthly' => []]));
+        $validated = $request->validate([
+            'billing_cycle' => 'required|in:' . implode(',', $allowedCycles),
+            'charge_owner' => 'required|boolean',
+            'admin_note' => 'nullable|string|max:200',
+        ]);
+
+        $owner = $vps->user;
+        $chargeOwner = (bool) $validated['charge_owner'];
+        if ($chargeOwner && !$owner) {
+            return back()->with('error', 'VPS chưa gắn với tài khoản chủ sở hữu để trừ ví. Hãy chọn chế độ không trừ ví hoặc chuyển chủ sở hữu trước.');
+        }
+
+        $billingCycle = $validated['billing_cycle'];
+        $plan = $pricing->getPlan((string) $vps->plan_id, $owner);
+        if (!$plan) {
+            return back()->with('error', 'Không tìm thấy cấu hình giá cho gói VPS này.');
+        }
+
+        $months = $pricing->monthsForCycle($billingCycle);
+        $cycleLabel = config("cloudsunny.billing_cycles.{$billingCycle}.label") ?? "{$months} Tháng";
+        $addonCpu = max(0, (int) $vps->cpu - (int) ($plan['cores'] ?? $vps->cpu));
+        $addonRam = max(0, (int) $vps->ram - (int) ($plan['ram'] ?? $vps->ram));
+        $addonDisk = max(0, (int) $vps->disk - (int) ($plan['disk'] ?? $vps->disk));
+
+        $quote = $pricing->quoteCycleForPlan($plan, $billingCycle, $owner, $addonCpu, $addonRam, $addonDisk, true);
+        $amount = $chargeOwner ? (int) $quote['final_price'] : 0;
+        $providerCost = (int) $quote['provider_cost'];
+        $noteSuffix = trim((string) ($validated['admin_note'] ?? '')) !== '' ? ' · ' . trim((string) $validated['admin_note']) : '';
+
+        if ($chargeOwner && $owner->balance < $amount) {
+            return back()->with('error', "Ví chủ sở hữu ({$owner->email}) không đủ số dư (cần " . number_format($amount, 0, ',', '.') . 'đ, hiện có ' . number_format((int) $owner->balance, 0, ',', '.') . 'đ).');
+        }
+
+        $lock = Cache::lock("vps_admin_renew_{$vps->id}", 60);
+        if (!$lock->get()) {
+            return back()->with('error', 'VPS này đang có thao tác gia hạn khác đang xử lý.');
+        }
+
+        $transaction = null;
+        try {
+            if ($chargeOwner) {
+                $transaction = $wallet->debit($owner, $amount, [
+                    'vps_instance_id' => $vps->id,
+                    'campaign_id' => $quote['campaign']['id'] ?? null,
+                    'type' => 'renew',
+                    'provider_cost' => $providerCost,
+                    'discount_amount' => (int) ($quote['discount_amount'] ?? 0),
+                    'description' => "[Admin gia hạn hộ] VPS {$vps->label} ({$cycleLabel}){$noteSuffix}",
+                ]);
+            }
+
+            $api->forAccount($vps->cloudSunnyAccount)->renewVps((int) $vps->provider_vps_id, $billingCycle);
+
+            $baseDate = $vps->expires_at && $vps->expires_at->isFuture() ? $vps->expires_at->copy() : Carbon::now();
+            $newExpiresAt = $baseDate->addMonths($months);
+            if ($vps->created_at) {
+                $newExpiresAt->day(min($vps->created_at->day, $newExpiresAt->daysInMonth));
+            }
+
+            $vps->update([
+                'billing_cycle' => $billingCycle,
+                'paid_amount' => (int) $vps->paid_amount + $amount,
+                'provider_cost' => (int) $vps->provider_cost + $providerCost,
+                'expires_at' => $newExpiresAt,
+                'status' => $vps->status === 'Hết hạn' ? 'Sẵn sàng' : $vps->status,
+            ]);
+
+            if (!$chargeOwner && $owner) {
+                Transaction::create([
+                    'user_id' => $owner->id,
+                    'vps_instance_id' => $vps->id,
+                    'type' => 'renew',
+                    'status' => 'completed',
+                    'amount' => 0,
+                    'provider_cost' => $providerCost,
+                    'discount_amount' => 0,
+                    'balance_before' => (int) $owner->balance,
+                    'balance_after' => (int) $owner->balance,
+                    'description' => "[Admin gia hạn trực tiếp · 0đ ví khách] VPS {$vps->label} ({$cycleLabel}){$noteSuffix}",
+                ]);
+            }
+
+            if ($chargeOwner && $transaction) {
+                app(AffiliateService::class)->processCommission($owner, $amount, 'renew_vps', "txn_{$transaction->id}");
+            }
+
+            if ($owner && !empty($owner->email)) {
+                try {
+                    Mail::to($owner->email)->queue(new ServiceRenewed(
+                        userName: $owner->name ?: 'bạn',
+                        serviceType: 'vps',
+                        serviceName: $vps->label,
+                        ipAddress: $vps->public_ip,
+                        cycleLabel: $cycleLabel,
+                        amountPaid: $amount,
+                        newExpiresAt: $newExpiresAt->format('d/m/Y H:i'),
+                        manageUrl: route('vps.show', $vps->id),
+                        isAuto: false
+                    ));
+                } catch (\Throwable $ignore) {
+                }
+            }
+
+            Log::info('Admin renewed VPS', [
+                'admin_id' => Auth::id(),
+                'vps_id' => $vps->id,
+                'cycle' => $billingCycle,
+                'charge_owner' => $chargeOwner,
+                'amount' => $amount,
+                'provider_cost' => $providerCost,
+            ]);
+
+            return back()->with('success', "Đã gia hạn VPS {$vps->label} thêm {$cycleLabel}" . ($chargeOwner ? ' (trừ ví chủ sở hữu ' . number_format($amount, 0, ',', '.') . 'đ).' : ' (không trừ ví khách).'));
+        } catch (RuntimeException $e) {
+            if ($e->getMessage() === 'INSUFFICIENT_BALANCE') {
+                return back()->with('error', 'Số dư ví chủ sở hữu không đủ.');
+            }
+            if ($transaction) {
+                $wallet->refundTransaction($transaction, CloudSunnyApiService::sanitizeErrorMessage($e->getMessage()));
+            }
+            return back()->with('error', 'Gia hạn thất bại' . ($transaction ? ' (đã hoàn tiền ví khách)' : '') . ': ' . CloudSunnyApiService::sanitizeErrorMessage($e->getMessage()));
+        } catch (\Throwable $e) {
+            if ($transaction) {
+                $wallet->refundTransaction($transaction, CloudSunnyApiService::sanitizeErrorMessage($e->getMessage()));
+            }
+            return back()->with('error', 'Gia hạn thất bại' . ($transaction ? ' (đã hoàn tiền ví khách)' : '') . ': ' . CloudSunnyApiService::sanitizeErrorMessage($e->getMessage()));
+        } finally {
+            $lock->release();
+        }
+    }
+
+    /**
+     * Admin nâng cấp CPU/RAM/SSD hộ VPS (tùy chọn trừ ví khách hoặc không thu phí ví khách).
+     */
+    public function upgrade(
+        Request $request,
+        VpsInstance $vps,
+        CloudSunnyApiService $api,
+        CloudSunnyPricingService $pricing,
+        WalletService $wallet
+    ) {
+        if (!$vps->cloudSunnyAccount || !$vps->provider_vps_id) {
+            return back()->with('error', 'VPS chưa liên kết tới hạ tầng gốc.');
+        }
+        if ($vps->isOverdue5Days() || $vps->isExpired()) {
+            return back()->with('error', 'VPS đã hết hạn hoặc bị hủy. Vui lòng gia hạn trước khi nâng cấp phần cứng.');
+        }
+
+        $validated = $request->validate([
+            'addon_cpu' => 'nullable|integer|min:0|max:16',
+            'addon_ram' => 'nullable|integer|min:0|max:64',
+            'addon_disk' => 'nullable|integer|min:0|max:1000',
+            'charge_owner' => 'required|boolean',
+            'admin_note' => 'nullable|string|max:200',
+        ]);
+
+        $addonCpu = (int) ($validated['addon_cpu'] ?? 0);
+        $addonRam = (int) ($validated['addon_ram'] ?? 0);
+        $addonDisk = (int) ($validated['addon_disk'] ?? 0);
+        if ($addonCpu < 1 && $addonRam < 1 && $addonDisk < 1) {
+            return back()->with('error', 'Vui lòng chọn ít nhất một thông số CPU, RAM hoặc Ổ cứng cần nâng cấp.');
+        }
+        if ($addonDisk > 0 && $addonDisk % 10 !== 0) {
+            return back()->with('error', 'Dung lượng ổ cứng nâng cấp phải là bội số của 10 GB.');
+        }
+
+        $owner = $vps->user;
+        $chargeOwner = (bool) $validated['charge_owner'];
+        if ($chargeOwner && !$owner) {
+            return back()->with('error', 'VPS chưa gắn với tài khoản chủ sở hữu để trừ ví.');
+        }
+
+        $quote = $pricing->quoteMidCycleUpgrade($vps, $addonCpu, $addonRam, $addonDisk, $owner);
+        $amount = $chargeOwner ? (int) $quote['final_price'] : 0;
+        $providerCost = (int) $quote['provider_cost'];
+        $noteSuffix = trim((string) ($validated['admin_note'] ?? '')) !== '' ? ' · ' . trim((string) $validated['admin_note']) : '';
+
+        if ($chargeOwner && $owner->balance < $amount) {
+            return back()->with('error', "Ví chủ sở hữu ({$owner->email}) không đủ số dư để nâng cấp (" . number_format($amount, 0, ',', '.') . 'đ).');
+        }
+
+        $lock = Cache::lock("vps_admin_upgrade_{$vps->id}", 60);
+        if (!$lock->get()) {
+            return back()->with('error', 'VPS này đang xử lý yêu cầu nâng cấp khác.');
+        }
+
+        $transaction = null;
+        try {
+            if ($chargeOwner) {
+                $transaction = $wallet->debit($owner, $amount, [
+                    'vps_instance_id' => $vps->id,
+                    'type' => 'upgrade',
+                    'provider_cost' => $providerCost,
+                    'discount_amount' => (int) ($quote['discount_amount'] ?? 0),
+                    'description' => "[Admin nâng cấp hộ] VPS {$vps->label} (+{$addonCpu}C/+{$addonRam}G/+{$addonDisk}GB){$noteSuffix}",
+                ]);
+            }
+
+            $api->forAccount($vps->cloudSunnyAccount)->upgradeVps((int) $vps->provider_vps_id, $addonCpu, $addonRam, $addonDisk);
+
+            $vps->update([
+                'cpu' => (int) $vps->cpu + $addonCpu,
+                'ram' => (int) $vps->ram + $addonRam,
+                'disk' => (int) $vps->disk + $addonDisk,
+                'paid_amount' => (int) $vps->paid_amount + $amount,
+                'provider_cost' => (int) $vps->provider_cost + $providerCost,
+                'status' => 'Đang khởi động lại',
+            ]);
+
+            if (!$chargeOwner && $owner) {
+                Transaction::create([
+                    'user_id' => $owner->id,
+                    'vps_instance_id' => $vps->id,
+                    'type' => 'upgrade',
+                    'status' => 'completed',
+                    'amount' => 0,
+                    'provider_cost' => $providerCost,
+                    'discount_amount' => 0,
+                    'balance_before' => (int) $owner->balance,
+                    'balance_after' => (int) $owner->balance,
+                    'description' => "[Admin nâng cấp trực tiếp · 0đ ví khách] VPS {$vps->label} (+{$addonCpu}C/+{$addonRam}G/+{$addonDisk}GB){$noteSuffix}",
+                ]);
+            }
+
+            if ($chargeOwner && $transaction) {
+                app(AffiliateService::class)->processCommission($owner, $amount, 'upgrade_vps', "txn_{$transaction->id}");
+            }
+
+            Log::info('Admin upgraded VPS', [
+                'admin_id' => Auth::id(),
+                'vps_id' => $vps->id,
+                'addons' => [$addonCpu, $addonRam, $addonDisk],
+                'charge_owner' => $chargeOwner,
+                'amount' => $amount,
+                'provider_cost' => $providerCost,
+            ]);
+
+            return back()->with('success', "Đã nâng cấp VPS {$vps->label} (+{$addonCpu} vCPU, +{$addonRam}GB RAM, +{$addonDisk}GB SSD) thành công!");
+        } catch (RuntimeException $e) {
+            if ($e->getMessage() === 'INSUFFICIENT_BALANCE') {
+                return back()->with('error', 'Số dư ví chủ sở hữu không đủ.');
+            }
+            if ($transaction) {
+                $wallet->refundTransaction($transaction, CloudSunnyApiService::sanitizeErrorMessage($e->getMessage()));
+            }
+            return back()->with('error', 'Nâng cấp thất bại' . ($transaction ? ' (đã hoàn tiền ví khách)' : '') . ': ' . CloudSunnyApiService::sanitizeErrorMessage($e->getMessage()));
+        } catch (\Throwable $e) {
+            if ($transaction) {
+                $wallet->refundTransaction($transaction, CloudSunnyApiService::sanitizeErrorMessage($e->getMessage()));
+            }
+            return back()->with('error', 'Nâng cấp thất bại' . ($transaction ? ' (đã hoàn tiền ví khách)' : '') . ': ' . CloudSunnyApiService::sanitizeErrorMessage($e->getMessage()));
+        } finally {
+            $lock->release();
+        }
+    }
+
+    /**
+     * Admin đổi IPv4 hộ VPS (tùy chọn trừ ví khách hoặc không thu phí ví khách).
+     */
+    public function changeIp(
+        Request $request,
+        VpsInstance $vps,
+        CloudSunnyApiService $api,
+        CloudSunnyPricingService $pricing,
+        WalletService $wallet
+    ) {
+        if (!$vps->cloudSunnyAccount || !$vps->provider_vps_id) {
+            return back()->with('error', 'VPS chưa liên kết tới hạ tầng gốc.');
+        }
+        if ($vps->normalizedState() !== 'running') {
+            return back()->with('error', 'VPS cần ở trạng thái Đang chạy (Bật) mới có thể đổi IPv4.');
+        }
+
+        $validated = $request->validate([
+            'password_vps' => 'required|string|min:1|max:128',
+            'charge_owner' => 'required|boolean',
+            'admin_note' => 'nullable|string|max:200',
+        ]);
+
+        $owner = $vps->user;
+        $chargeOwner = (bool) $validated['charge_owner'];
+        if ($chargeOwner && !$owner) {
+            return back()->with('error', 'VPS chưa gắn với tài khoản chủ sở hữu để trừ ví.');
+        }
+
+        @set_time_limit(140);
+
+        $addonRates = $pricing->getAddonRates();
+        $apiClient = $api->forAccount($vps->cloudSunnyAccount);
+        $providerCost = (int) ($addonRates['cost_change_ip'] ?? 20000);
+        $retailBase = (int) ($addonRates['change_ip'] ?? 30000);
+
+        try {
+            $remoteCfg = $apiClient->getChangeIpConfig((int) $vps->provider_vps_id);
+            if (isset($remoteCfg['enable']) && $remoteCfg['enable'] === false) {
+                return back()->with('error', 'Chức năng đổi IPv4 hiện đang tạm khóa bảo trì từ nhà cung cấp.');
+            }
+            if (!empty($remoteCfg['price']) && (int) $remoteCfg['price'] > 0) {
+                $providerCost = (int) $remoteCfg['price'];
+            }
+            $remoteVps = $remoteCfg['vps'] ?? null;
+            if (is_array($remoteVps) && isset($remoteVps['can_change_ip']) && $remoteVps['can_change_ip'] === false) {
+                return back()->with('error', CloudSunnyApiService::sanitizeErrorMessage((string) ($remoteVps['reason'] ?? 'VPS chưa đủ điều kiện đổi IP.')));
+            }
+        } catch (\Throwable $e) {
+            return back()->with('error', 'Không thể kiểm tra điều kiện đổi IP: ' . CloudSunnyApiService::sanitizeErrorMessage($e->getMessage()));
+        }
+
+        $amount = $chargeOwner
+            ? ($owner ? max($providerCost, $pricing->applyUserDiscount($retailBase, $owner)) : $retailBase)
+            : 0;
+        $noteSuffix = trim((string) ($validated['admin_note'] ?? '')) !== '' ? ' · ' . trim((string) $validated['admin_note']) : '';
+
+        if ($chargeOwner && $owner->balance < $amount) {
+            return back()->with('error', "Ví chủ sở hữu ({$owner->email}) không đủ số dư để đổi IP (" . number_format($amount, 0, ',', '.') . 'đ).');
+        }
+
+        $lock = Cache::lock("vps_change_ip_{$vps->id}", 135);
+        if (!$lock->get()) {
+            return back()->with('error', 'VPS này đang xử lý yêu cầu đổi IP khác.');
+        }
+
+        $oldIp = $vps->public_ip;
+        $transaction = null;
+        try {
+            if ($chargeOwner) {
+                $transaction = $wallet->debit($owner, $amount, [
+                    'vps_instance_id' => $vps->id,
+                    'type' => 'change_ip',
+                    'provider_cost' => $providerCost,
+                    'discount_amount' => max(0, $retailBase - $amount),
+                    'description' => "[Admin đổi IP hộ] VPS {$vps->label}" . ($oldIp ? " (IP cũ: {$oldIp})" : '') . $noteSuffix,
+                ]);
+            }
+
+            $apiClient->changeIpVps((int) $vps->provider_vps_id, $validated['password_vps']);
+
+            $vps->update([
+                'status' => 'Đang đổi IP...',
+                'paid_amount' => (int) $vps->paid_amount + $amount,
+                'provider_cost' => (int) $vps->provider_cost + $providerCost,
+            ]);
+
+            if (!$chargeOwner && $owner) {
+                Transaction::create([
+                    'user_id' => $owner->id,
+                    'vps_instance_id' => $vps->id,
+                    'type' => 'change_ip',
+                    'status' => 'completed',
+                    'amount' => 0,
+                    'provider_cost' => $providerCost,
+                    'discount_amount' => 0,
+                    'balance_before' => (int) $owner->balance,
+                    'balance_after' => (int) $owner->balance,
+                    'description' => "[Admin đổi IP trực tiếp · 0đ ví khách] VPS {$vps->label}" . ($oldIp ? " (IP cũ: {$oldIp})" : '') . $noteSuffix,
+                ]);
+            }
+
+            if ($chargeOwner && $transaction) {
+                app(AffiliateService::class)->processCommission($owner, $amount, 'change_ip_vps', "txn_{$transaction->id}");
+            }
+
+            return back()->with('success', 'Đã gửi lệnh đổi IPv4 thành công! IP mới sẽ tự cập nhật sau 2–5 phút.');
+        } catch (\Throwable $e) {
+            $acceptedUpstream = false;
+            try {
+                $latest = $apiClient->getVps((int) $vps->provider_vps_id);
+                $latestStatus = strtolower((string) ($latest['status'] ?? ''));
+                $latestIp = (string) ($latest['ip'] ?? $latest['ip_address'] ?? '');
+                if ($latestStatus === 'change_ip' || ($oldIp && $latestIp !== '' && $latestIp !== $oldIp)) {
+                    $acceptedUpstream = true;
+                    $vps->update([
+                        'public_ip' => $latestIp ?: $vps->public_ip,
+                        'status' => VpsInstance::mapUpstreamStatus($latestStatus ?: 'change_ip'),
+                        'paid_amount' => (int) $vps->paid_amount + $amount,
+                        'provider_cost' => (int) $vps->provider_cost + $providerCost,
+                    ]);
+                }
+            } catch (\Throwable $ignore) {
+            }
+
+            if ($acceptedUpstream) {
+                return back()->with('success', 'Yêu cầu đổi IPv4 đã được hạ tầng tiếp nhận và đang xử lý!');
+            }
+
+            if ($transaction) {
+                $wallet->refundTransaction($transaction, CloudSunnyApiService::sanitizeErrorMessage($e->getMessage()));
+            }
+
+            return back()->with('error', 'Đổi IPv4 thất bại' . ($transaction ? ' (đã hoàn tiền ví khách)' : '') . ': ' . CloudSunnyApiService::sanitizeErrorMessage($e->getMessage()));
+        } finally {
+            $lock->release();
+        }
+    }
+
+    public function toggleAutoRenew(VpsInstance $vps)
+    {
+        if ($vps->normalizedState() === 'deleted') {
+            return back()->with('error', 'VPS đã ngừng hoạt động, không thể bật tự động gia hạn.');
+        }
+
+        $next = !$vps->is_auto_renew;
+        $vps->update(['is_auto_renew' => $next]);
+
+        return back()->with('success', $next ? "Đã bật tự động gia hạn cho VPS {$vps->label}." : "Đã tắt tự động gia hạn cho VPS {$vps->label}.");
     }
 
     public function console(VpsInstance $vps, CloudSunnyApiService $api)

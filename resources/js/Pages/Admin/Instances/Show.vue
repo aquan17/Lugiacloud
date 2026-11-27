@@ -28,11 +28,27 @@ import {
     Loader2,
     X,
     Disc,
+    CalendarClock,
+    ArrowUpCircle,
+    Globe,
 } from 'lucide-vue-next';
 
 const props = defineProps<{
     vps: any;
     images: Array<{ id: number; label: string; distro: string; group: string }>;
+    renewQuotes: Array<{ key: string; label: string; months: number; price: number; list_price: number; provider_cost: number }>;
+    upgradeMeta: {
+        days_remaining: number;
+        charge_factor: number;
+        cpu_monthly: number;
+        ram_monthly: number;
+        disk_10gb_monthly: number;
+        cost_cpu_monthly: number;
+        cost_ram_monthly: number;
+        cost_disk_10gb_monthly: number;
+        owner_discount_percent: number;
+    };
+    changeIpMeta: { active: boolean; price: number; provider_cost: number };
     transactions: Array<any>;
 }>();
 
@@ -147,6 +163,124 @@ function submitReassign() {
             showReassignModal.value = false;
             reassignForm.user_id = '';
         },
+    });
+}
+
+// --- Auto-renew toggle ---
+function toggleAutoRenew() {
+    busyAction.value = 'autorenew';
+    router.post(`/admin/instances/${props.vps.id}/auto-renew`, {}, {
+        preserveScroll: true,
+        onFinish: () => (busyAction.value = null),
+    });
+}
+
+// --- Modal Gia hạn hộ VPS ---
+const showRenewModal = ref(false);
+const renewForm = useForm({
+    billing_cycle: props.vps.billing_cycle || 'monthly',
+    charge_owner: Boolean(props.vps.user),
+    admin_note: '',
+});
+const selectedRenewQuote = computed(
+    () => props.renewQuotes.find((q) => q.key === renewForm.billing_cycle) || props.renewQuotes[0] || null
+);
+function openRenewModal() {
+    renewForm.clearErrors();
+    renewForm.billing_cycle = props.renewQuotes.some((q) => q.key === props.vps.billing_cycle)
+        ? props.vps.billing_cycle
+        : (props.renewQuotes[0]?.key || 'monthly');
+    renewForm.charge_owner = Boolean(props.vps.user);
+    renewForm.admin_note = '';
+    showRenewModal.value = true;
+}
+function submitRenew() {
+    const q = selectedRenewQuote.value;
+    const modeText = renewForm.charge_owner
+        ? `Trừ ví khách ${props.vps.user?.email}: ${formatVnd(q?.price || 0)}`
+        : `KHÔNG trừ ví khách (0đ — chỉ trừ vốn gốc ~${formatVnd(q?.provider_cost || 0)} trên CloudSunny)`;
+    askConfirm({
+        title: `Xác nhận Gia hạn VPS ${props.vps.label}`,
+        message: `Chu kỳ: ${q?.label || renewForm.billing_cycle}\n• ${modeText}`,
+        confirmText: 'Gia hạn ngay',
+        variant: 'primary',
+        onConfirm: () => {
+            renewForm.post(`/admin/instances/${props.vps.id}/renew`, {
+                preserveScroll: true,
+                onSuccess: () => (showRenewModal.value = false),
+            });
+        },
+    });
+}
+
+// --- Modal Nâng cấp phần cứng hộ VPS ---
+const showUpgradeModal = ref(false);
+const upgradeForm = useForm({
+    addon_cpu: 0,
+    addon_ram: 0,
+    addon_disk: 0,
+    charge_owner: Boolean(props.vps.user),
+    admin_note: '',
+});
+const upgradePreview = computed(() => {
+    const cpu = Math.max(0, Number(upgradeForm.addon_cpu || 0));
+    const ram = Math.max(0, Number(upgradeForm.addon_ram || 0));
+    const disk = Math.max(0, Number(upgradeForm.addon_disk || 0));
+    const factor = Number(props.upgradeMeta?.charge_factor || 1);
+    const retailMonthly = cpu * props.upgradeMeta.cpu_monthly + ram * props.upgradeMeta.ram_monthly + Math.floor(disk / 10) * props.upgradeMeta.disk_10gb_monthly;
+    const costMonthly = cpu * props.upgradeMeta.cost_cpu_monthly + ram * props.upgradeMeta.cost_ram_monthly + Math.floor(disk / 10) * props.upgradeMeta.cost_disk_10gb_monthly;
+    const listTotal = Math.round(retailMonthly * factor);
+    const costTotal = Math.round(costMonthly * factor);
+    const discPct = Number(props.upgradeMeta?.owner_discount_percent || 0);
+    const estCustomer = Math.max(costTotal, Math.round(listTotal * (1 - discPct / 100)));
+    return { listTotal, costTotal, estCustomer, hasAny: cpu > 0 || ram > 0 || disk > 0 };
+});
+function openUpgradeModal() {
+    upgradeForm.clearErrors();
+    upgradeForm.addon_cpu = 0;
+    upgradeForm.addon_ram = 0;
+    upgradeForm.addon_disk = 0;
+    upgradeForm.charge_owner = Boolean(props.vps.user);
+    upgradeForm.admin_note = '';
+    showUpgradeModal.value = true;
+}
+function submitUpgrade() {
+    if (!upgradePreview.value.hasAny) return;
+    const modeText = upgradeForm.charge_owner
+        ? `Trừ ví khách ${props.vps.user?.email}: ~${formatVnd(upgradePreview.value.estCustomer)}`
+        : `KHÔNG trừ ví khách (0đ — chỉ trừ vốn gốc ~${formatVnd(upgradePreview.value.costTotal)})`;
+    askConfirm({
+        title: `Nâng cấp phần cứng VPS ${props.vps.label}`,
+        message: `Thêm: +${upgradeForm.addon_cpu} vCPU, +${upgradeForm.addon_ram}GB RAM, +${upgradeForm.addon_disk}GB SSD\n• ${modeText}\n(VPS sẽ tự khởi động lại để nhận phần cứng mới)`,
+        confirmText: 'Xác nhận Nâng cấp',
+        variant: 'primary',
+        onConfirm: () => {
+            upgradeForm.post(`/admin/instances/${props.vps.id}/upgrade`, {
+                preserveScroll: true,
+                onSuccess: () => (showUpgradeModal.value = false),
+            });
+        },
+    });
+}
+
+// --- Modal Đổi IPv4 hộ VPS ---
+const showChangeIpModal = ref(false);
+const changeIpForm = useForm({
+    password_vps: props.vps.root_password || '',
+    charge_owner: Boolean(props.vps.user),
+    admin_note: '',
+});
+function openChangeIpModal() {
+    changeIpForm.clearErrors();
+    changeIpForm.password_vps = props.vps.root_password || '';
+    changeIpForm.charge_owner = Boolean(props.vps.user);
+    changeIpForm.admin_note = '';
+    showChangeIpModal.value = true;
+}
+function submitChangeIp() {
+    changeIpForm.post(`/admin/instances/${props.vps.id}/change-ip`, {
+        preserveScroll: true,
+        onSuccess: () => (showChangeIpModal.value = false),
     });
 }
 
@@ -298,8 +432,18 @@ function confirmCancelRefund() {
                     <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80">
                         <div class="text-slate-500 font-bold uppercase text-[10.5px]">Thời hạn &amp; Chu kỳ</div>
                         <div class="font-mono-num font-extrabold text-sm text-[#0B1437] mt-1">{{ vps.expires_at || '—' }}</div>
-                        <div class="text-[11px] text-slate-600 mt-0.5">
-                            {{ vps.billing_cycle_label }} · Auto-renew: <strong>{{ vps.is_auto_renew ? 'Bật' : 'Tắt' }}</strong>
+                        <div class="text-[11px] text-slate-600 mt-0.5 flex items-center justify-between gap-2">
+                            <span>{{ vps.billing_cycle_label }} · Auto: <strong>{{ vps.is_auto_renew ? 'Bật' : 'Tắt' }}</strong></span>
+                            <button
+                                v-if="!vps.is_deleted"
+                                type="button"
+                                :disabled="busyAction === 'autorenew'"
+                                @click="toggleAutoRenew"
+                                class="px-2 py-0.5 rounded border text-[10.5px] font-bold cursor-pointer transition"
+                                :class="vps.is_auto_renew ? 'border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-100'"
+                            >
+                                {{ vps.is_auto_renew ? 'Tắt' : 'Bật' }}
+                            </button>
                         </div>
                     </div>
 
@@ -395,7 +539,21 @@ function confirmCancelRefund() {
                 <!-- Right (5 cols) -->
                 <div class="lg:col-span-5 space-y-6">
                     <div class="surface-card p-5 sm:p-6 rounded-2xl border border-slate-200/90 shadow-xs space-y-3 text-xs">
-                        <h3 class="text-sm font-extrabold text-[#0B1437]">Công cụ quản trị kỹ thuật</h3>
+                        <h3 class="text-sm font-extrabold text-[#0B1437]">Công cụ quản trị &amp; dịch vụ hộ</h3>
+
+                        <div v-if="vps.is_linked && !vps.is_deleted" class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pb-3 border-b border-slate-100">
+                            <button type="button" @click="openRenewModal" class="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-[#1D6AE5] hover:bg-[#1557C0] text-white font-bold cursor-pointer transition">
+                                <CalendarClock class="w-4 h-4" /><span>Gia hạn hộ VPS</span>
+                            </button>
+
+                            <button v-if="!vps.is_expired" type="button" @click="openUpgradeModal" class="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-[#0B1437] hover:bg-[#162354] text-white font-bold cursor-pointer transition">
+                                <ArrowUpCircle class="w-4 h-4 text-sky-400" /><span>Nâng cấp CPU/RAM/SSD</span>
+                            </button>
+
+                            <button v-if="vps.state === 'running'" type="button" @click="openChangeIpModal" class="sm:col-span-2 inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 font-bold text-indigo-800 cursor-pointer transition">
+                                <Globe class="w-4 h-4" /><span>Đổi địa chỉ IPv4 hộ ({{ formatVnd(changeIpMeta.price) }} · Vốn {{ formatVnd(changeIpMeta.provider_cost) }})</span>
+                            </button>
+                        </div>
 
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                             <button type="button" @click="showReassignModal = true" class="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 font-bold text-slate-800 cursor-pointer transition">
@@ -440,6 +598,218 @@ function confirmCancelRefund() {
                 </div>
             </div>
         </div>
+
+        <!-- Modal Gia hạn hộ VPS -->
+        <Teleport to="body">
+            <div v-if="showRenewModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/55" @click.self="!renewForm.processing && (showRenewModal = false)">
+                <form @submit.prevent="submitRenew" class="w-full max-w-lg bg-white rounded-2xl border border-slate-200 shadow-2xl p-6 space-y-4 text-xs">
+                    <div class="flex items-center justify-between pb-3 border-b border-slate-200">
+                        <div>
+                            <h3 class="text-sm font-extrabold text-[#0B1437]">Gia hạn hộ VPS — {{ vps.label }}</h3>
+                            <p class="text-[11px] text-slate-500 mt-0.5">Hạn hiện tại: {{ vps.expires_at || '—' }} · Ví chủ sở hữu: {{ formatVnd(vps.user?.balance || 0) }}</p>
+                        </div>
+                        <button type="button" @click="!renewForm.processing && (showRenewModal = false)" class="text-slate-400 hover:text-slate-700 cursor-pointer"><X class="w-4 h-4" /></button>
+                    </div>
+
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1.5">Chọn chu kỳ gia hạn</label>
+                        <select v-model="renewForm.billing_cycle" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 bg-white font-bold">
+                            <option v-for="q in renewQuotes" :key="q.key" :value="q.key">
+                                {{ q.label }} — Giá khách: {{ formatVnd(q.price) }} (Vốn gốc: {{ formatVnd(q.provider_cost) }})
+                            </option>
+                        </select>
+                    </div>
+
+                    <div v-if="selectedRenewQuote" class="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1.5">
+                        <div class="flex justify-between">
+                            <span class="text-slate-600">Giá bán (sau chiết khấu chủ sở hữu):</span>
+                            <span class="font-mono-num font-black text-[#0B1437]">{{ formatVnd(selectedRenewQuote.price) }}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-slate-600">Giá vốn ước tính trừ ví CloudSunny:</span>
+                            <span class="font-mono-num font-bold text-slate-700">{{ formatVnd(selectedRenewQuote.provider_cost) }}</span>
+                        </div>
+                    </div>
+
+                    <div class="space-y-2">
+                        <label class="block font-bold text-slate-700">Chế độ thanh toán</label>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <button
+                                type="button"
+                                :disabled="!vps.user"
+                                @click="renewForm.charge_owner = true"
+                                class="p-3 rounded-xl border text-left cursor-pointer transition disabled:opacity-50"
+                                :class="renewForm.charge_owner ? 'border-[#1D6AE5] bg-blue-50/70 ring-1 ring-[#1D6AE5]' : 'border-slate-200 hover:bg-slate-50'"
+                            >
+                                <div class="font-extrabold text-[#0B1437]">Trừ ví chủ sở hữu</div>
+                                <div class="text-[11px] text-slate-600 mt-0.5">Trừ {{ formatVnd(selectedRenewQuote?.price || 0) }} &amp; tính doanh thu</div>
+                            </button>
+                            <button
+                                type="button"
+                                @click="renewForm.charge_owner = false"
+                                class="p-3 rounded-xl border text-left cursor-pointer transition"
+                                :class="!renewForm.charge_owner ? 'border-amber-500 bg-amber-50/70 ring-1 ring-amber-500' : 'border-slate-200 hover:bg-slate-50'"
+                            >
+                                <div class="font-extrabold text-[#0B1437]">Không trừ ví khách (0đ)</div>
+                                <div class="text-[11px] text-slate-600 mt-0.5">Chỉ gọi CloudSunny, ghi sổ vốn gốc</div>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block font-semibold text-slate-700 mb-1">Ghi chú nội bộ (tùy chọn)</label>
+                        <input v-model="renewForm.admin_note" type="text" placeholder="VD: Khách chuyển khoản trực tiếp / Bù hạn" class="w-full px-3 py-2 rounded-xl border border-slate-300" />
+                    </div>
+
+                    <div class="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                        <button type="button" @click="!renewForm.processing && (showRenewModal = false)" class="px-4 py-2 rounded-xl border border-slate-300 font-bold cursor-pointer">Hủy</button>
+                        <button type="submit" :disabled="renewForm.processing || !selectedRenewQuote" class="px-4 py-2 rounded-xl bg-[#1D6AE5] hover:bg-[#1557C0] text-white font-bold cursor-pointer inline-flex items-center gap-1.5 disabled:opacity-50">
+                            <Loader2 v-if="renewForm.processing" class="w-3.5 h-3.5 animate-spin" />
+                            <span>Gia hạn VPS</span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </Teleport>
+
+        <!-- Modal Nâng cấp CPU/RAM/SSD hộ VPS -->
+        <Teleport to="body">
+            <div v-if="showUpgradeModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/55" @click.self="!upgradeForm.processing && (showUpgradeModal = false)">
+                <form @submit.prevent="submitUpgrade" class="w-full max-w-lg bg-white rounded-2xl border border-slate-200 shadow-2xl p-6 space-y-4 text-xs">
+                    <div class="flex items-center justify-between pb-3 border-b border-slate-200">
+                        <div>
+                            <h3 class="text-sm font-extrabold text-[#0B1437]">Nâng cấp phần cứng hộ — {{ vps.label }}</h3>
+                            <p class="text-[11px] text-slate-500 mt-0.5">Hiện tại: {{ vps.cpu }} vCPU · {{ vps.ram }}GB RAM · {{ vps.disk }}GB SSD (hệ số {{ upgradeMeta.charge_factor }} tháng · còn {{ upgradeMeta.days_remaining }} ngày)</p>
+                        </div>
+                        <button type="button" @click="!upgradeForm.processing && (showUpgradeModal = false)" class="text-slate-400 hover:text-slate-700 cursor-pointer"><X class="w-4 h-4" /></button>
+                    </div>
+
+                    <div class="grid grid-cols-3 gap-3">
+                        <div>
+                            <label class="block font-bold text-slate-700 mb-1">Thêm vCPU</label>
+                            <input v-model.number="upgradeForm.addon_cpu" type="number" min="0" max="16" class="w-full px-3 py-2 rounded-xl border border-slate-300 font-mono-num font-bold" />
+                            <div class="text-[10.5px] text-slate-500 mt-1">{{ formatVnd(upgradeMeta.cpu_monthly) }}/C/th</div>
+                        </div>
+                        <div>
+                            <label class="block font-bold text-slate-700 mb-1">Thêm RAM (GB)</label>
+                            <input v-model.number="upgradeForm.addon_ram" type="number" min="0" max="64" class="w-full px-3 py-2 rounded-xl border border-slate-300 font-mono-num font-bold" />
+                            <div class="text-[10.5px] text-slate-500 mt-1">{{ formatVnd(upgradeMeta.ram_monthly) }}/GB/th</div>
+                        </div>
+                        <div>
+                            <label class="block font-bold text-slate-700 mb-1">Thêm SSD (GB)</label>
+                            <input v-model.number="upgradeForm.addon_disk" type="number" min="0" max="1000" step="10" class="w-full px-3 py-2 rounded-xl border border-slate-300 font-mono-num font-bold" />
+                            <div class="text-[10.5px] text-slate-500 mt-1">Bội số 10 · {{ formatVnd(upgradeMeta.disk_10gb_monthly) }}/10GB</div>
+                        </div>
+                    </div>
+
+                    <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1.5">
+                        <div class="flex justify-between">
+                            <span class="text-slate-600">Cấu hình sau nâng cấp:</span>
+                            <strong class="text-[#0B1437]">{{ vps.cpu + (upgradeForm.addon_cpu || 0) }} vCPU · {{ vps.ram + (upgradeForm.addon_ram || 0) }}GB RAM · {{ vps.disk + (upgradeForm.addon_disk || 0) }}GB SSD</strong>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-slate-600">Ước tính thu ví khách:</span>
+                            <span class="font-mono-num font-black text-[#1D6AE5]">{{ formatVnd(upgradePreview.estCustomer) }}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-slate-600">Ước tính vốn CloudSunny:</span>
+                            <span class="font-mono-num font-bold text-slate-700">{{ formatVnd(upgradePreview.costTotal) }}</span>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <button
+                            type="button"
+                            :disabled="!vps.user"
+                            @click="upgradeForm.charge_owner = true"
+                            class="p-3 rounded-xl border text-left cursor-pointer transition disabled:opacity-50"
+                            :class="upgradeForm.charge_owner ? 'border-[#1D6AE5] bg-blue-50/70 ring-1 ring-[#1D6AE5]' : 'border-slate-200 hover:bg-slate-50'"
+                        >
+                            <div class="font-extrabold text-[#0B1437]">Trừ ví chủ sở hữu</div>
+                            <div class="text-[11px] text-slate-600 mt-0.5">Ví hiện có: {{ formatVnd(vps.user?.balance || 0) }}</div>
+                        </button>
+                        <button
+                            type="button"
+                            @click="upgradeForm.charge_owner = false"
+                            class="p-3 rounded-xl border text-left cursor-pointer transition"
+                            :class="!upgradeForm.charge_owner ? 'border-amber-500 bg-amber-50/70 ring-1 ring-amber-500' : 'border-slate-200 hover:bg-slate-50'"
+                        >
+                            <div class="font-extrabold text-[#0B1437]">Không trừ ví khách (0đ)</div>
+                            <div class="text-[11px] text-slate-600 mt-0.5">Chỉ gọi CloudSunny, ghi sổ vốn gốc</div>
+                        </button>
+                    </div>
+
+                    <div>
+                        <label class="block font-semibold text-slate-700 mb-1">Ghi chú nội bộ (tùy chọn)</label>
+                        <input v-model="upgradeForm.admin_note" type="text" placeholder="VD: Khách CK trực tiếp nâng thêm RAM" class="w-full px-3 py-2 rounded-xl border border-slate-300" />
+                    </div>
+
+                    <div class="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                        <button type="button" @click="!upgradeForm.processing && (showUpgradeModal = false)" class="px-4 py-2 rounded-xl border border-slate-300 font-bold cursor-pointer">Hủy</button>
+                        <button type="submit" :disabled="upgradeForm.processing || !upgradePreview.hasAny" class="px-4 py-2 rounded-xl bg-[#0B1437] hover:bg-[#162354] text-white font-bold cursor-pointer inline-flex items-center gap-1.5 disabled:opacity-50">
+                            <Loader2 v-if="upgradeForm.processing" class="w-3.5 h-3.5 animate-spin" />
+                            <span>Thực hiện Nâng cấp</span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </Teleport>
+
+        <!-- Modal Đổi IPv4 hộ VPS -->
+        <Teleport to="body">
+            <div v-if="showChangeIpModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/55" @click.self="!changeIpForm.processing && (showChangeIpModal = false)">
+                <form @submit.prevent="submitChangeIp" class="w-full max-w-md bg-white rounded-2xl border border-slate-200 shadow-2xl p-6 space-y-4 text-xs">
+                    <div class="flex items-center justify-between pb-3 border-b border-slate-200">
+                        <div>
+                            <h3 class="text-sm font-extrabold text-[#0B1437]">Đổi IPv4 hộ — {{ vps.label }}</h3>
+                            <p class="text-[11px] text-slate-500 mt-0.5">IP hiện tại: {{ vps.public_ip || '—' }}</p>
+                        </div>
+                        <button type="button" @click="!changeIpForm.processing && (showChangeIpModal = false)" class="text-slate-400 hover:text-slate-700 cursor-pointer"><X class="w-4 h-4" /></button>
+                    </div>
+
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">Mật khẩu hiện tại của VPS</label>
+                        <input v-model="changeIpForm.password_vps" type="text" required class="w-full px-3 py-2 rounded-xl border border-slate-300 font-mono" />
+                        <p class="text-[11px] text-slate-500 mt-1">Nhà cung cấp sẽ xác thực mật khẩu này (mất 5–90 giây) trước khi đổi IP.</p>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-2">
+                        <button
+                            type="button"
+                            :disabled="!vps.user"
+                            @click="changeIpForm.charge_owner = true"
+                            class="p-2.5 rounded-xl border text-left cursor-pointer transition disabled:opacity-50"
+                            :class="changeIpForm.charge_owner ? 'border-[#1D6AE5] bg-blue-50/70 ring-1 ring-[#1D6AE5]' : 'border-slate-200 hover:bg-slate-50'"
+                        >
+                            <div class="font-extrabold text-[#0B1437]">Trừ ví khách</div>
+                            <div class="text-[11px] text-slate-600">{{ formatVnd(changeIpMeta.price) }}</div>
+                        </button>
+                        <button
+                            type="button"
+                            @click="changeIpForm.charge_owner = false"
+                            class="p-2.5 rounded-xl border text-left cursor-pointer transition"
+                            :class="!changeIpForm.charge_owner ? 'border-amber-500 bg-amber-50/70 ring-1 ring-amber-500' : 'border-slate-200 hover:bg-slate-50'"
+                        >
+                            <div class="font-extrabold text-[#0B1437]">Không trừ ví (0đ)</div>
+                            <div class="text-[11px] text-slate-600">Vốn ~{{ formatVnd(changeIpMeta.provider_cost) }}</div>
+                        </button>
+                    </div>
+
+                    <div>
+                        <label class="block font-semibold text-slate-700 mb-1">Ghi chú nội bộ (tùy chọn)</label>
+                        <input v-model="changeIpForm.admin_note" type="text" placeholder="VD: Hỗ trợ đổi IP sạch cho khách" class="w-full px-3 py-2 rounded-xl border border-slate-300" />
+                    </div>
+
+                    <div class="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                        <button type="button" @click="!changeIpForm.processing && (showChangeIpModal = false)" class="px-4 py-2 rounded-xl border border-slate-300 font-bold cursor-pointer">Hủy</button>
+                        <button type="submit" :disabled="changeIpForm.processing" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold cursor-pointer inline-flex items-center gap-1.5 disabled:opacity-50">
+                            <Loader2 v-if="changeIpForm.processing" class="w-3.5 h-3.5 animate-spin" />
+                            <span>{{ changeIpForm.processing ? 'Đang kiểm tra...' : 'Đổi IPv4 ngay' }}</span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </Teleport>
 
         <!-- Modals -->
         <Teleport to="body">

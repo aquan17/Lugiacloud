@@ -282,6 +282,10 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
     Route::get('/instances/{vps}', [AdminInstanceController::class, 'show'])->name('instances.show');
     Route::post('/instances/{vps}/sync', [AdminInstanceController::class, 'sync'])->name('instances.sync');
     Route::post('/instances/{vps}/power', [AdminInstanceController::class, 'power'])->name('instances.power');
+    Route::post('/instances/{vps}/renew', [AdminInstanceController::class, 'renew'])->name('instances.renew');
+    Route::post('/instances/{vps}/upgrade', [AdminInstanceController::class, 'upgrade'])->name('instances.upgrade');
+    Route::post('/instances/{vps}/change-ip', [AdminInstanceController::class, 'changeIp'])->name('instances.changeIp');
+    Route::post('/instances/{vps}/auto-renew', [AdminInstanceController::class, 'toggleAutoRenew'])->name('instances.toggleAutoRenew');
     Route::post('/instances/{vps}/password', [AdminInstanceController::class, 'changePassword'])->name('instances.password');
     Route::post('/instances/{vps}/rebuild', [AdminInstanceController::class, 'rebuild'])->name('instances.rebuild');
     Route::post('/instances/{vps}/extend-disk', [AdminInstanceController::class, 'extendDisk'])->name('instances.extendDisk');
@@ -293,6 +297,8 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
     Route::get('/proxies', [AdminProxyController::class, 'index'])->name('proxies.index');
     Route::get('/proxies/{proxy}', [AdminProxyController::class, 'show'])->name('proxies.show');
     Route::post('/proxies/{proxy}/sync', [AdminProxyController::class, 'sync'])->name('proxies.sync');
+    Route::post('/proxies/{proxy}/renew', [AdminProxyController::class, 'renew'])->name('proxies.renew');
+    Route::post('/proxies/{proxy}/auto-renew', [AdminProxyController::class, 'toggleAutoRenew'])->name('proxies.toggleAutoRenew');
     Route::post('/proxies/{proxy}/credentials', [AdminProxyController::class, 'updateCredentials'])->name('proxies.credentials');
     Route::post('/proxies/{proxy}/change-type', [AdminProxyController::class, 'changeType'])->name('proxies.changeType');
     Route::post('/proxies/{proxy}/sync-ip', [AdminProxyController::class, 'syncIp'])->name('proxies.syncIp');
@@ -304,6 +310,8 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
     Route::get('/servers', [AdminDedicatedServerController::class, 'index'])->name('servers.index');
     Route::get('/servers/{server}', [AdminDedicatedServerController::class, 'show'])->name('servers.show');
     Route::post('/servers/{server}/sync', [AdminDedicatedServerController::class, 'sync'])->name('servers.sync');
+    Route::post('/servers/{server}/renew', [AdminDedicatedServerController::class, 'renew'])->name('servers.renew');
+    Route::post('/servers/{server}/auto-renew', [AdminDedicatedServerController::class, 'toggleAutoRenew'])->name('servers.toggleAutoRenew');
     Route::post('/servers/{server}/handover', [AdminDedicatedServerController::class, 'handover'])->name('servers.handover');
     Route::post('/servers/{server}/reassign', [AdminDedicatedServerController::class, 'reassign'])->name('servers.reassign');
 

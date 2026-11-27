@@ -903,6 +903,8 @@ class DashboardController extends Controller
             return back()->with('error', 'Máy chủ này đang xử lý một yêu cầu đổi IP khác. Vui lòng chờ hoàn tất.');
         }
 
+        @set_time_limit(140);
+
         $oldIp = $vps->public_ip;
         $transaction = null;
         try {
@@ -983,6 +985,8 @@ class DashboardController extends Controller
         if (!$lock->get()) {
             return back()->with('error', 'Máy chủ này đang xử lý yêu cầu mở rộng ổ cứng. Vui lòng chờ hoàn tất.');
         }
+
+        @set_time_limit(140);
 
         try {
             $api->forAccount($vps->cloudSunnyAccount)->extendDiskVps(
