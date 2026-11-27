@@ -36,7 +36,65 @@ function submitSearch() {
             </div>
 
             <div class="surface-card overflow-hidden rounded-2xl border border-slate-200/90 shadow-xs">
-                <div class="overflow-x-auto">
+                <!-- Mobile Card List -->
+                <div class="lg:hidden divide-y divide-slate-200/80">
+                    <div v-if="users.data.length === 0" class="py-12 px-4 text-center text-xs text-slate-500 font-medium">
+                        Không tìm thấy thành viên nào.
+                    </div>
+                    <div v-for="u in users.data" :key="`m-${u.id}`" class="p-4 space-y-3 bg-white">
+                        <div class="flex items-start justify-between gap-2.5">
+                            <Link :href="`/admin/users/${u.id}`" class="group min-w-0 block">
+                                <div class="font-extrabold text-[13px] text-[#0B1437] group-hover:text-[#1D6AE5] truncate transition-colors">{{ u.name }}</div>
+                                <div class="text-[11px] font-mono font-medium text-slate-500 truncate mt-0.5">{{ u.email }}</div>
+                            </Link>
+                            <span
+                                class="px-2 py-0.5 rounded-md text-[11px] font-bold border shrink-0"
+                                :class="
+                                    u.role === 1
+                                        ? 'bg-amber-50 text-amber-800 border-amber-200'
+                                        : u.role === 2
+                                          ? 'bg-blue-50 text-[#1D6AE5] border-blue-200'
+                                          : 'bg-slate-100 text-slate-700 border-slate-200'
+                                "
+                            >
+                                {{ u.role_label }}
+                            </span>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-2.5 rounded-xl bg-slate-50/90 border border-slate-200/70 p-2.5 text-[11.5px]">
+                            <div class="min-w-0">
+                                <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Số dư ví</div>
+                                <div class="font-mono-num font-extrabold text-[#0B1437] mt-0.5">{{ formatVnd(u.balance) }}</div>
+                            </div>
+                            <div class="min-w-0 text-right">
+                                <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Dịch vụ</div>
+                                <div class="font-mono-num font-bold text-slate-800 mt-0.5">
+                                    <Link :href="`/admin/instances?search=${encodeURIComponent(u.email)}`" class="hover:text-[#1D6AE5]">{{ u.vps_count }} VPS</Link>
+                                    <span class="mx-1 text-slate-400">·</span>
+                                    <Link :href="`/admin/proxies?search=${encodeURIComponent(u.email)}`" class="hover:text-[#1D6AE5]">{{ u.proxy_count }} IP</Link>
+                                </div>
+                            </div>
+                            <div class="min-w-0">
+                                <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Chiết khấu riêng</div>
+                                <div class="font-mono-num font-semibold text-slate-700 mt-0.5">VPS -{{ u.discount_percent }}% · Proxy -{{ u.proxy_discount_percent }}%</div>
+                            </div>
+                            <div class="min-w-0 text-right">
+                                <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Tham gia</div>
+                                <div class="font-mono-num text-slate-600 mt-0.5">{{ u.created_at }}</div>
+                            </div>
+                        </div>
+
+                        <Link
+                            :href="`/admin/users/${u.id}`"
+                            class="w-full inline-flex items-center justify-center px-3 py-2 rounded-xl border border-blue-200 bg-blue-50/80 hover:bg-blue-100 text-[#1D6AE5] text-xs font-bold transition"
+                        >
+                            Quản lý thành viên
+                        </Link>
+                    </div>
+                </div>
+
+                <!-- Desktop Table -->
+                <div class="hidden lg:block overflow-x-auto">
                     <table class="w-full text-left border-collapse text-xs">
                         <thead>
                             <tr class="border-b border-slate-200 bg-slate-50/90 text-xs font-bold uppercase tracking-wider text-slate-600">

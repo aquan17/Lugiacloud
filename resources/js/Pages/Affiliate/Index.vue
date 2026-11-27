@@ -87,7 +87,26 @@ async function copyLink() {
                     Chưa có giao dịch hoa hồng nào.
                 </div>
 
-                <div v-else class="overflow-x-auto">
+                <template v-else>
+                    <!-- Mobile Card List -->
+                    <div class="md:hidden divide-y divide-slate-200/80">
+                        <div v-for="l in logs.data" :key="`m-${l.id}`" class="p-4 space-y-2 bg-white text-xs">
+                            <div class="flex items-start justify-between gap-2">
+                                <div class="min-w-0">
+                                    <div class="font-mono font-bold text-[#0B1437] truncate">{{ l.buyer_email }}</div>
+                                    <div class="text-[11px] text-slate-500 mt-0.5">{{ l.transaction_type }}</div>
+                                </div>
+                                <div class="font-mono-num font-black text-emerald-700 shrink-0">+{{ formatVnd(l.commission) }}</div>
+                            </div>
+                            <div class="flex items-center justify-between pt-2 border-t border-slate-100 text-[11px]">
+                                <span class="text-slate-500">Đơn hàng: <strong class="font-mono-num text-slate-800">{{ formatVnd(l.amount) }}</strong></span>
+                                <span class="font-mono-num text-slate-500">{{ l.created_at }}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Desktop Table -->
+                    <div class="hidden md:block overflow-x-auto">
                     <table class="w-full text-left border-collapse text-xs">
                         <thead>
                             <tr class="border-b border-slate-200 bg-slate-50/90 text-xs font-bold uppercase tracking-wider text-slate-600">
@@ -109,6 +128,7 @@ async function copyLink() {
                         </tbody>
                     </table>
                 </div>
+                </template>
                 <div class="px-5 pb-4">
                     <PaginationBar :links="logs.links" />
                 </div>

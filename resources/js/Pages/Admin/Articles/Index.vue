@@ -110,7 +110,83 @@ function deleteArticle(a: any) {
 
             <!-- Articles Table -->
             <div class="surface-card overflow-hidden rounded-2xl border border-slate-200/90 shadow-xs">
-                <div class="overflow-x-auto">
+                <!-- Mobile Card List -->
+                <div class="lg:hidden divide-y divide-slate-200/80">
+                    <div v-if="articles.data.length === 0" class="py-12 px-4 text-center text-xs text-slate-500 font-medium">
+                        Chưa có bài viết nào phù hợp.
+                    </div>
+                    <div v-for="a in articles.data" :key="`m-${a.id}`" class="p-4 space-y-3 bg-white text-xs">
+                        <div class="flex items-start gap-3">
+                            <div class="w-16 h-11 rounded-lg bg-slate-100 border border-slate-200 overflow-hidden flex items-center justify-center shrink-0">
+                                <img v-if="a.thumbnail_url" :src="a.thumbnail_url" alt="" loading="lazy" decoding="async" class="w-full h-full object-cover" />
+                                <BookOpen v-else class="w-4 h-4 text-slate-400" />
+                            </div>
+                            <div class="min-w-0 flex-1">
+                                <div class="flex items-center flex-wrap gap-1.5">
+                                    <span v-if="a.is_featured" class="px-1.5 py-0.5 rounded bg-amber-50 border border-amber-200 text-amber-700 text-[10px] font-bold">Nổi bật</span>
+                                    <span
+                                        class="px-2 py-0.5 rounded-md text-[10.5px] font-bold border"
+                                        :class="a.is_published ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-100 text-slate-600 border-slate-200'"
+                                    >
+                                        {{ a.is_published ? 'Công khai' : 'Bản nháp' }}
+                                    </span>
+                                </div>
+                                <Link :href="`/admin/articles/${a.id}/edit`" class="block font-bold text-[13px] text-[#0B1437] hover:text-[#1D6AE5] mt-1 leading-snug break-words">
+                                    {{ a.title }}
+                                </Link>
+                                <div class="font-mono text-[11px] text-slate-500 truncate mt-0.5">/blog/{{ a.slug }}</div>
+                            </div>
+                        </div>
+
+                        <div class="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-50/90 border border-slate-200/70 px-3 py-2 text-[11px]">
+                            <span class="px-2 py-0.5 rounded-md bg-blue-50 text-[#1D6AE5] border border-blue-200 font-bold">
+                                {{ a.category_label }}
+                            </span>
+                            <div class="font-mono-num text-slate-600 flex items-center gap-2.5">
+                                <span><strong class="text-[#0B1437]">{{ a.views }}</strong> lượt đọc</span>
+                                <span>·</span>
+                                <span>{{ a.published_at }}</span>
+                            </div>
+                        </div>
+
+                        <div class="flex items-center gap-2">
+                            <Link
+                                :href="`/admin/articles/${a.id}/edit`"
+                                class="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border border-slate-300 bg-white hover:bg-blue-50 hover:border-blue-200 text-slate-800 hover:text-[#1D6AE5] font-bold transition"
+                            >
+                                <Edit3 class="w-3.5 h-3.5" />
+                                <span>Chỉnh sửa</span>
+                            </Link>
+                            <Link
+                                :href="`/blog/${a.slug}`"
+                                target="_blank"
+                                class="p-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 hover:text-[#1D6AE5] transition shrink-0"
+                                title="Xem bài trên /blog"
+                            >
+                                <ExternalLink class="w-4 h-4" />
+                            </Link>
+                            <button
+                                type="button"
+                                @click="router.post(`/admin/articles/${a.id}/toggle`, {}, { preserveScroll: true })"
+                                class="p-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 cursor-pointer shrink-0"
+                                title="Ẩn / Hiện bài viết"
+                            >
+                                <Power class="w-4 h-4" />
+                            </button>
+                            <button
+                                type="button"
+                                @click="deleteArticle(a)"
+                                class="p-2 rounded-xl border border-rose-200 bg-white hover:bg-rose-50 text-rose-600 cursor-pointer shrink-0"
+                                title="Xóa bài viết"
+                            >
+                                <Trash2 class="w-4 h-4" />
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Desktop Table -->
+                <div class="hidden lg:block overflow-x-auto">
                     <table class="w-full text-left border-collapse text-xs">
                         <thead>
                             <tr class="border-b border-slate-200 bg-slate-50/90 text-xs font-bold uppercase tracking-wider text-slate-600 whitespace-nowrap">

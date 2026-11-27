@@ -98,7 +98,26 @@ async function quickCopy(val: string, label: string) {
                     </div>
                     <span class="text-xs text-slate-500">Bấm mã để chép</span>
                 </div>
-                <div class="overflow-x-auto">
+                <!-- Mobile Cards -->
+                <div class="sm:hidden divide-y divide-slate-100">
+                    <div v-for="pl in catalogPlans" :key="`m-${pl.slug}`" class="p-3.5 space-y-1.5 text-xs">
+                        <div class="flex items-center justify-between gap-2">
+                            <button
+                                type="button"
+                                @click="quickCopy(pl.slug, `mã gói ${pl.slug}`)"
+                                class="px-2 py-0.5 rounded bg-blue-50 hover:bg-blue-100 text-[#1D6AE5] font-mono font-bold cursor-pointer"
+                            >
+                                "{{ pl.slug }}"
+                            </button>
+                            <span class="font-mono-num font-bold text-[#0B1437]">{{ formatVnd(pl.price_monthly) }}</span>
+                        </div>
+                        <div class="flex items-center justify-between gap-2 text-slate-600">
+                            <span class="font-semibold text-slate-800">{{ pl.name }}</span>
+                            <span class="font-mono-num">{{ pl.cpu }}C · {{ pl.ram }}G · {{ pl.disk }}G SSD</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="hidden sm:block overflow-x-auto">
                     <table class="w-full text-left border-collapse text-[13.5px]">
                         <thead>
                             <tr class="border-b border-slate-200/80 text-xs uppercase text-slate-400 bg-slate-50/40">
@@ -143,7 +162,23 @@ async function quickCopy(val: string, label: string) {
                     <span class="text-xs text-slate-500">{{ osList.length }} bản cài đặt</span>
                 </div>
                 <div class="max-h-[310px] overflow-y-auto">
-                    <table class="w-full text-left border-collapse text-[13.5px]">
+                    <!-- Mobile Cards -->
+                    <div class="sm:hidden divide-y divide-slate-100">
+                        <div v-for="os in osList" :key="`m-${os.id}`" class="p-3 flex items-center justify-between gap-2.5 text-xs">
+                            <div class="flex items-center gap-2 min-w-0">
+                                <button
+                                    type="button"
+                                    @click="quickCopy(String(os.id), `os_id ${os.id}`)"
+                                    class="px-2 py-0.5 rounded bg-blue-50 hover:bg-blue-100 text-[#1D6AE5] font-mono-num font-bold cursor-pointer shrink-0"
+                                >
+                                    {{ os.id }}
+                                </button>
+                                <span class="font-medium text-slate-800 truncate">{{ os.name }}</span>
+                            </div>
+                            <span class="text-slate-500 text-[11px] shrink-0">{{ os.group }}</span>
+                        </div>
+                    </div>
+                    <table class="hidden sm:table w-full text-left border-collapse text-[13.5px]">
                         <thead class="sticky top-0 bg-slate-50 border-b border-slate-200/80 text-xs uppercase text-slate-400">
                             <tr>
                                 <th class="py-2.5 px-4 whitespace-nowrap">os_id</th>

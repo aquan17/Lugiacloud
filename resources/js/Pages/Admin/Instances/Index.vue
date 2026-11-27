@@ -98,7 +98,70 @@ function submitReassign() {
             </div>
 
             <div class="surface-card overflow-hidden rounded-2xl border border-slate-200/90 shadow-xs">
-                <div class="overflow-x-auto">
+                <!-- Mobile Card List -->
+                <div class="lg:hidden divide-y divide-slate-200/80">
+                    <div v-if="instances.data.length === 0" class="py-12 px-4 text-center text-xs text-slate-500 font-medium">
+                        Không có máy chủ nào phù hợp với bộ lọc hiện tại.
+                    </div>
+                    <div v-for="v in instances.data" :key="`m-${v.id}`" class="p-4 space-y-3 bg-white">
+                        <div class="flex items-start justify-between gap-2.5">
+                            <div class="min-w-0">
+                                <Link :href="`/admin/instances/${v.id}`" class="block font-extrabold text-[13px] text-[#0B1437] hover:text-[#1D6AE5] truncate transition-colors">
+                                    {{ v.label }}
+                                </Link>
+                                <div class="font-mono-num text-[11px] font-medium text-slate-500 mt-0.5 truncate">
+                                    {{ v.public_ip || 'Chờ IP' }} · PVS#{{ v.provider_vps_id || '—' }}
+                                </div>
+                            </div>
+                            <StatusBadge :state="v.state" :label="v.status" class="shrink-0" />
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-2.5 rounded-xl bg-slate-50/90 border border-slate-200/70 p-2.5 text-[11.5px]">
+                            <div class="col-span-2 min-w-0">
+                                <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Khách hàng</div>
+                                <Link v-if="v.user_id" :href="`/admin/users/${v.user_id}`" class="group block mt-0.5 truncate">
+                                    <span class="font-bold text-[#0B1437] group-hover:text-[#1D6AE5]">{{ v.user_name || '—' }}</span>
+                                    <span class="font-mono text-[10.5px] text-slate-500 ml-1.5">{{ v.user_email }}</span>
+                                </Link>
+                                <div v-else class="text-slate-400 italic mt-0.5">Đã xóa</div>
+                            </div>
+                            <div class="min-w-0">
+                                <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Cấu hình</div>
+                                <div class="font-mono-num font-bold text-slate-800 mt-0.5 truncate">{{ v.specs }}</div>
+                            </div>
+                            <div class="min-w-0 text-right">
+                                <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Đã thu / Vốn</div>
+                                <div class="font-mono-num font-extrabold text-[#0B1437] mt-0.5">{{ formatVnd(v.paid_amount) }}</div>
+                                <div class="font-mono-num text-[10.5px] text-slate-500">Vốn: {{ formatVnd(v.provider_cost) }}</div>
+                            </div>
+                            <div class="col-span-2 flex items-center justify-between pt-2 border-t border-slate-200/70 text-[11px]">
+                                <span class="text-slate-500 font-semibold">Hết hạn</span>
+                                <span class="font-mono-num font-bold text-slate-700">{{ v.expires_at || '—' }}</span>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-2">
+                            <Link
+                                :href="`/admin/instances/${v.id}`"
+                                class="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 text-xs font-bold transition"
+                            >
+                                <Eye class="w-3.5 h-3.5 text-[#1D6AE5]" />
+                                <span>Chi tiết</span>
+                            </Link>
+                            <button
+                                type="button"
+                                @click="openReassignModal(v)"
+                                class="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border border-blue-200 bg-blue-50/80 hover:bg-blue-100 text-[#1D6AE5] text-xs font-bold cursor-pointer transition"
+                            >
+                                <UserCheck class="w-3.5 h-3.5" />
+                                <span>Gán User</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Desktop Table -->
+                <div class="hidden lg:block overflow-x-auto">
                     <table class="w-full text-left border-collapse text-xs">
                         <thead>
                             <tr class="border-b border-slate-200 bg-slate-50/90 text-xs font-bold uppercase tracking-wider text-slate-600 whitespace-nowrap">

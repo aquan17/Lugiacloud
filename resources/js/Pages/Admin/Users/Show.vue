@@ -148,7 +148,37 @@ const roleForm = useForm({
                 <div class="px-5 py-3.5 border-b border-slate-200 text-xs font-bold uppercase text-slate-700">
                     20 Giao dịch gần nhất
                 </div>
-                <div class="overflow-x-auto">
+                <!-- Mobile Card List -->
+                <div class="sm:hidden divide-y divide-slate-200/80">
+                    <div v-if="transactions.length === 0" class="py-8 px-4 text-center text-xs text-slate-500">
+                        Chưa có giao dịch nào.
+                    </div>
+                    <div v-for="t in transactions" :key="`m-${t.id}`" class="p-4 space-y-2 bg-white text-xs">
+                        <div class="flex items-start justify-between gap-2">
+                            <div class="font-mono font-bold text-[#0B1437] min-w-0 truncate">
+                                <Link
+                                    v-if="t.code"
+                                    :href="`/admin/revenue?search=${encodeURIComponent(t.code)}`"
+                                    class="hover:text-[#1D6AE5] transition-colors"
+                                >
+                                    {{ t.code }}
+                                </Link>
+                                <span v-else>#{{ t.id }}</span>
+                            </div>
+                            <div class="font-mono-num font-extrabold text-[#0B1437] shrink-0">{{ formatVnd(t.amount) }}</div>
+                        </div>
+                        <div class="text-slate-700 leading-relaxed break-words">{{ t.description }}</div>
+                        <div class="flex flex-wrap items-center justify-between gap-1.5 pt-1 text-[11px]">
+                            <span v-if="t.coupon_code" class="font-mono font-semibold text-emerald-700">
+                                Mã: {{ t.coupon_code }}<span v-if="t.discount_amount > 0"> (-{{ formatVnd(t.discount_amount) }})</span>
+                            </span>
+                            <span v-else />
+                            <span class="font-mono-num text-slate-500">{{ t.created_at }}</span>
+                        </div>
+                    </div>
+                </div>
+                <!-- Desktop Table -->
+                <div class="hidden sm:block overflow-x-auto">
                     <table class="w-full text-left border-collapse text-xs">
                         <tbody class="divide-y divide-slate-200/80">
                             <tr v-for="t in transactions" :key="t.id">

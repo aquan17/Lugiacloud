@@ -50,7 +50,7 @@ function printPage() {
                 </button>
             </div>
 
-            <div class="surface-card p-8 sm:p-10 space-y-8 bg-white rounded-2xl border border-slate-200/90 shadow-xs">
+            <div class="surface-card p-5 sm:p-10 space-y-6 sm:space-y-8 bg-white rounded-2xl border border-slate-200/90 shadow-xs">
                 <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-4 pb-6 border-b border-slate-200">
                     <div>
                         <img src="/logo.webp" alt="LugiaCloud" width="128" height="32" decoding="async" class="h-8 w-auto object-contain mb-2" />
@@ -80,7 +80,19 @@ function printPage() {
                     </div>
                 </div>
 
-                <table class="w-full text-left border-collapse text-xs">
+                <!-- Mobile Item Cards (screen only; print always uses table below) -->
+                <div class="sm:hidden print:hidden divide-y divide-slate-200 border-y border-slate-200 text-xs">
+                    <div v-for="(item, idx) in invoice.items" :key="`m-${idx}`" class="py-3.5 space-y-2">
+                        <div class="font-bold text-[#0B1437] text-sm">{{ item.name }}</div>
+                        <div v-if="item.description" class="text-slate-600 font-medium leading-relaxed break-words">{{ item.description }}</div>
+                        <div class="flex items-center justify-between pt-1">
+                            <span class="text-slate-500 font-medium">{{ item.cycle }}</span>
+                            <span class="font-mono-num font-extrabold text-[#0B1437] text-sm">{{ formatVnd(item.price) }}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <table class="hidden sm:table print:table w-full text-left border-collapse text-xs">
                     <thead>
                         <tr class="border-y border-slate-200 bg-slate-50 text-xs font-bold uppercase tracking-wider text-slate-600">
                             <th class="py-3 px-3">Chi tiết dịch vụ</th>

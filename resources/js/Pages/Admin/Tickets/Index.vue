@@ -127,7 +127,56 @@ const totalPages = computed(() => Math.max(1, Math.ceil((props.meta.total || 0) 
 
             <!-- Tickets Table -->
             <div class="surface-card overflow-hidden rounded-2xl border border-slate-200/90 shadow-xs">
-                <div class="overflow-x-auto">
+                <!-- Mobile Card List -->
+                <div class="lg:hidden divide-y divide-slate-200/80">
+                    <div v-if="tickets.length === 0" class="py-12 px-4 text-center text-xs text-slate-500 font-medium">
+                        Chưa có ticket nào trong mục này.
+                    </div>
+                    <div v-for="tk in tickets" :key="`m-${tk.id}`" class="p-4 space-y-2.5 bg-white text-xs">
+                        <div class="flex items-start justify-between gap-2">
+                            <Link :href="`/admin/tickets/${tk.id}`" class="font-bold text-[13px] text-[#0B1437] hover:text-[#1D6AE5] leading-snug min-w-0 break-words">
+                                <span class="font-mono text-slate-500 mr-1.5">{{ tk.ma || `#${tk.id}` }}</span>
+                                <span>{{ tk.tieu_de }}</span>
+                            </Link>
+                            <span class="px-2 py-0.5 rounded-md border text-[11px] font-bold shrink-0" :class="badgeClass(tk.trang_thai)">
+                                {{ tk.ten_trang_thai || tk.trang_thai }}
+                            </span>
+                        </div>
+
+                        <div v-if="tk.tu_dong_dong_luc && tk.trang_thai === 'cho_khach'" class="text-[11px] text-amber-700 font-medium flex items-center gap-1">
+                            <Clock class="w-3 h-3 shrink-0" />
+                            <span>Tự đóng lúc {{ tk.tu_dong_dong_luc }} nếu không phản hồi</span>
+                        </div>
+
+                        <div class="rounded-xl bg-slate-50/90 border border-slate-200/70 p-2.5 space-y-1.5 text-[11px]">
+                            <div class="flex items-center justify-between gap-2">
+                                <span class="text-slate-500 font-semibold">Dịch vụ</span>
+                                <span class="truncate">
+                                    <span class="px-1.5 py-0.5 rounded bg-slate-200/80 text-slate-700 font-bold text-[10px] mr-1">{{ tk.ten_loai_dich_vu || tk.loai_dich_vu }}</span>
+                                    <span class="font-mono font-bold text-[#0B1437]">{{ tk.dich_vu }}</span>
+                                </span>
+                            </div>
+                            <div class="flex items-center justify-between gap-2 pt-1.5 border-t border-slate-200/70">
+                                <span class="inline-flex items-center gap-1 font-mono-num font-bold text-slate-700">
+                                    <MessageSquare class="w-3.5 h-3.5 text-slate-400" />
+                                    {{ tk.so_tin }} tin nhắn
+                                </span>
+                                <span class="font-mono-num text-slate-500">{{ tk.cap_nhat_luc || tk.tao_luc }}</span>
+                            </div>
+                        </div>
+
+                        <Link
+                            :href="`/admin/tickets/${tk.id}`"
+                            class="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 font-bold transition"
+                        >
+                            <Eye class="w-3.5 h-3.5 text-[#1D6AE5]" />
+                            <span>Mở hội thoại</span>
+                        </Link>
+                    </div>
+                </div>
+
+                <!-- Desktop Table -->
+                <div class="hidden lg:block overflow-x-auto">
                     <table class="w-full text-left border-collapse text-xs">
                         <thead>
                             <tr class="border-b border-slate-200 bg-slate-50/90 text-xs font-bold uppercase tracking-wider text-slate-600 whitespace-nowrap">

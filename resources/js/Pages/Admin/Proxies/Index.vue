@@ -177,7 +177,85 @@ function submitReassign() {
             </div>
 
             <div class="surface-card overflow-hidden rounded-2xl border border-slate-200/90 shadow-xs">
-                <div class="overflow-x-auto">
+                <!-- Mobile Card List -->
+                <div class="lg:hidden divide-y divide-slate-200/80">
+                    <div v-if="proxies.data.length === 0" class="py-12 px-4 text-center text-xs text-slate-500 font-medium">
+                        Không có Proxy nào phù hợp với bộ lọc hiện tại.
+                    </div>
+                    <div v-for="p in proxies.data" :key="`m-${p.id}`" class="p-4 space-y-3 bg-white">
+                        <div class="flex items-start justify-between gap-2.5">
+                            <div class="flex items-start gap-2.5 min-w-0">
+                                <input v-model="selectedIds" :value="p.id" type="checkbox" class="mt-1 rounded border-slate-300 text-[#1D6AE5] shrink-0" />
+                                <div class="min-w-0">
+                                    <div class="flex items-center flex-wrap gap-1.5">
+                                        <Link :href="`/admin/proxies/${p.id}`" class="font-mono font-extrabold text-[13px] text-[#0B1437] hover:text-[#1D6AE5] break-all transition-colors">
+                                            {{ p.endpoint }}
+                                        </Link>
+                                        <span class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-mono text-[10px] font-bold shrink-0">{{ p.protocol }}</span>
+                                    </div>
+                                    <div class="text-[11px] text-slate-500 mt-0.5 truncate">
+                                        {{ p.product_name }} · PRX#{{ p.provider_proxy_id || '—' }}
+                                    </div>
+                                </div>
+                            </div>
+                            <StatusBadge :state="p.state || p.status" :label="p.status" class="shrink-0" />
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-2.5 rounded-xl bg-slate-50/90 border border-slate-200/70 p-2.5 text-[11.5px]">
+                            <div class="col-span-2 min-w-0">
+                                <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Khách hàng</div>
+                                <Link v-if="p.user_id" :href="`/admin/users/${p.user_id}`" class="group block mt-0.5 truncate">
+                                    <span class="font-bold text-[#0B1437] group-hover:text-[#1D6AE5]">{{ p.user_name || '—' }}</span>
+                                    <span class="font-mono text-[10.5px] text-slate-500 ml-1.5">{{ p.user_email }}</span>
+                                </Link>
+                                <div v-else class="text-slate-400 italic mt-0.5">Đã xóa</div>
+                            </div>
+                            <div class="min-w-0">
+                                <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Đã thu</div>
+                                <div class="font-mono-num font-extrabold text-[#0B1437] mt-0.5">{{ formatVnd(p.paid_amount) }}</div>
+                            </div>
+                            <div class="min-w-0 text-right">
+                                <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Hết hạn</div>
+                                <div class="font-mono-num font-bold text-slate-700 mt-0.5">{{ p.expires_at || '—' }}</div>
+                            </div>
+                        </div>
+
+                        <div class="flex items-center gap-2">
+                            <Link
+                                :href="`/admin/proxies/${p.id}`"
+                                class="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 text-xs font-bold transition"
+                            >
+                                <Eye class="w-3.5 h-3.5 text-[#1D6AE5]" />
+                                <span>Chi tiết</span>
+                            </Link>
+                            <button
+                                type="button"
+                                @click="openSingleReassign(p)"
+                                class="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border border-blue-200 bg-blue-50/80 hover:bg-blue-100 text-[#1D6AE5] text-xs font-bold cursor-pointer transition"
+                            >
+                                <UserCheck class="w-3.5 h-3.5" />
+                                <span>Gán User</span>
+                            </button>
+                            <button
+                                type="button"
+                                @click="
+                                    askConfirm({
+                                        title: 'Xóa Proxy',
+                                        message: `Xóa Proxy ${p.ip || '#' + p.id} khỏi hệ thống?`,
+                                        onConfirm: () => router.delete(`/admin/proxies/${p.id}`, { preserveScroll: true }),
+                                    })
+                                "
+                                class="p-2 rounded-xl border border-rose-200 text-rose-600 hover:bg-rose-50 cursor-pointer transition shrink-0"
+                                title="Xóa Proxy"
+                            >
+                                <Trash2 class="w-4 h-4" />
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Desktop Table -->
+                <div class="hidden lg:block overflow-x-auto">
                     <table class="w-full text-left border-collapse text-xs">
                         <thead>
                             <tr class="border-b border-slate-200 bg-slate-50/90 text-xs font-bold uppercase tracking-wider text-slate-600 whitespace-nowrap">

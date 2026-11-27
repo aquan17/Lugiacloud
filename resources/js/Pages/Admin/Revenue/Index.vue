@@ -138,7 +138,76 @@ function confirmDeleteTransaction(t: any) {
                     </form>
                 </div>
 
-                <div class="overflow-x-auto">
+                <!-- Mobile Card List -->
+                <div class="lg:hidden divide-y divide-slate-200/80">
+                    <div v-if="transactions.data.length === 0" class="py-10 px-4 text-center text-xs text-slate-500 font-medium">
+                        Không có đơn hàng nào khớp bộ lọc.
+                    </div>
+                    <div v-for="t in transactions.data" :key="`m-${t.id}`" class="p-4 space-y-2.5 bg-white text-xs">
+                        <div class="flex items-start justify-between gap-2">
+                            <div class="min-w-0">
+                                <div class="font-mono font-bold text-[#0B1437] truncate">{{ t.code }}</div>
+                                <div class="font-mono-num text-[11px] text-slate-500 mt-0.5">{{ t.created_at }}</div>
+                            </div>
+                            <button
+                                type="button"
+                                @click="confirmDeleteTransaction(t)"
+                                class="p-1.5 rounded-lg border border-slate-200 text-slate-400 hover:text-rose-600 hover:border-rose-200 cursor-pointer transition shrink-0"
+                                title="Xóa bản ghi"
+                            >
+                                <Trash2 class="w-3.5 h-3.5" />
+                            </button>
+                        </div>
+
+                        <div>
+                            <div class="font-bold text-[#0B1437] leading-relaxed break-words">{{ t.description }}</div>
+                            <div v-if="t.coupon_code" class="mt-1">
+                                <button
+                                    type="button"
+                                    @click="filterByCoupon(t.coupon_code)"
+                                    class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-[11px] font-mono font-bold text-emerald-800 cursor-pointer transition"
+                                >
+                                    <Ticket class="w-3 h-3 text-emerald-600 shrink-0" />
+                                    <span>{{ t.coupon_code }}</span>
+                                    <span v-if="t.discount_amount > 0">(-{{ formatVnd(t.discount_amount) }})</span>
+                                </button>
+                            </div>
+                            <div v-else-if="t.discount_amount > 0" class="mt-0.5 text-[11px] font-mono font-semibold text-indigo-700">
+                                Ưu đãi / Chiết khấu (-{{ formatVnd(t.discount_amount) }})
+                            </div>
+                            <div v-if="t.status === 'refunded'" class="mt-0.5 text-[11px] font-bold text-rose-600">Đơn lỗi — Đã hoàn tiền</div>
+                        </div>
+
+                        <div class="rounded-xl bg-slate-50/90 border border-slate-200/70 p-2.5 space-y-2 text-[11px]">
+                            <div class="flex items-center justify-between gap-2 min-w-0">
+                                <span class="text-slate-500 font-semibold shrink-0">Khách</span>
+                                <Link v-if="t.user_id" :href="`/admin/users/${t.user_id}`" class="font-bold text-[#0B1437] hover:text-[#1D6AE5] truncate">
+                                    {{ t.user_name ? `${t.user_name} (${t.user_email})` : t.user_email }}
+                                </Link>
+                                <span v-else class="font-mono text-slate-400 italic truncate">{{ t.user_email }}</span>
+                            </div>
+                            <div class="grid grid-cols-3 gap-2 pt-2 border-t border-slate-200/70 font-mono-num">
+                                <div>
+                                    <div class="text-[10px] font-sans font-bold uppercase text-slate-400">Thu khách</div>
+                                    <div class="font-extrabold text-[#0B1437] mt-0.5">{{ formatVnd(t.amount) }}</div>
+                                </div>
+                                <div class="text-center">
+                                    <div class="text-[10px] font-sans font-bold uppercase text-slate-400">Vốn gốc</div>
+                                    <div class="font-bold text-slate-700 mt-0.5">{{ formatVnd(t.provider_cost) }}</div>
+                                </div>
+                                <div class="text-right">
+                                    <div class="text-[10px] font-sans font-bold uppercase text-slate-400">Lãi đơn</div>
+                                    <div class="font-black mt-0.5" :class="t.profit >= 0 ? 'text-emerald-700' : 'text-rose-600'">
+                                        {{ formatVnd(t.profit) }}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Desktop Table -->
+                <div class="hidden lg:block overflow-x-auto">
                     <table class="w-full text-left border-collapse text-xs">
                         <thead>
                             <tr class="border-b border-slate-200 bg-slate-50/90 text-xs font-bold uppercase tracking-wider text-slate-600">

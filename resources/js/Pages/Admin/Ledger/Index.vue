@@ -116,7 +116,109 @@ function typeBadgeClass(type: string): string {
 
             <!-- Full Wallet Ledger Table -->
             <div class="surface-card overflow-hidden rounded-2xl border border-slate-200/90 shadow-xs">
-                <div class="overflow-x-auto">
+                <!-- Mobile Card List -->
+                <div class="lg:hidden divide-y divide-slate-200/80">
+                    <div v-if="entries.data.length === 0" class="py-10 px-4 text-center text-xs text-slate-500 font-medium">
+                        Không có bản ghi sổ cái nào khớp bộ lọc hiện tại.
+                    </div>
+                    <div v-for="e in entries.data" :key="`m-${e.id}`" class="p-4 space-y-2.5 bg-white text-xs">
+                        <div class="flex items-start justify-between gap-2">
+                            <div class="min-w-0">
+                                <div class="flex items-center flex-wrap gap-1.5">
+                                    <span class="font-mono font-bold text-[#0B1437]">{{ e.code }}</span>
+                                    <span
+                                        class="inline-flex items-center px-2 py-0.5 rounded-md border text-[10.5px] font-bold"
+                                        :class="typeBadgeClass(e.type)"
+                                    >
+                                        {{ e.type_label }}
+                                    </span>
+                                </div>
+                                <div class="font-mono-num text-[11px] text-slate-500 mt-0.5">{{ e.created_at }}</div>
+                            </div>
+                            <div
+                                class="font-mono-num font-black text-sm text-right shrink-0"
+                                :class="
+                                    e.status === 'refunded'
+                                        ? 'text-slate-400 line-through font-semibold'
+                                        : e.is_credit
+                                          ? 'text-emerald-700'
+                                          : 'text-[#0B1437]'
+                                "
+                            >
+                                {{ e.amount >= 0 ? '+' : '' }}{{ formatVnd(e.amount) }}
+                            </div>
+                        </div>
+
+                        <div class="font-semibold text-[#0B1437] leading-relaxed break-words">{{ e.description }}</div>
+
+                        <div class="flex flex-wrap items-center gap-1.5">
+                            <button
+                                v-if="e.coupon_code"
+                                type="button"
+                                @click="filterByCoupon(e.coupon_code)"
+                                class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-[11px] font-mono font-bold text-emerald-800 cursor-pointer transition"
+                            >
+                                <Ticket class="w-3 h-3 text-emerald-600" />
+                                <span>{{ e.coupon_code }}</span>
+                                <span v-if="e.discount_amount > 0">(-{{ formatVnd(e.discount_amount) }})</span>
+                            </button>
+                            <span
+                                v-else-if="e.discount_amount > 0"
+                                class="inline-flex items-center px-2 py-0.5 rounded-md bg-indigo-50 border border-indigo-200 text-[11px] font-mono font-semibold text-indigo-700"
+                            >
+                                Ưu đãi -{{ formatVnd(e.discount_amount) }}
+                            </span>
+                            <Link
+                                v-if="e.vps_id"
+                                :href="`/admin/instances/${e.vps_id}`"
+                                class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-50 hover:bg-blue-100 border border-blue-200 text-[11px] font-mono font-bold text-[#1D6AE5] transition"
+                            >
+                                <Server class="w-3 h-3" />
+                                <span>VPS #{{ e.vps_id }}</span>
+                            </Link>
+                            <Link
+                                v-if="e.proxy_id"
+                                :href="`/admin/proxies/${e.proxy_id}`"
+                                class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-[11px] font-mono font-bold text-emerald-700 transition"
+                            >
+                                <Globe class="w-3 h-3" />
+                                <span>Proxy #{{ e.proxy_id }}</span>
+                            </Link>
+                            <Link
+                                v-if="e.server_id"
+                                :href="`/admin/servers/${e.server_id}`"
+                                class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-[11px] font-mono font-bold text-indigo-700 transition"
+                            >
+                                <Cpu class="w-3 h-3" />
+                                <span>Server #{{ e.server_id }}</span>
+                            </Link>
+                            <span v-if="e.status === 'refunded'" class="text-[11px] font-bold text-rose-600">
+                                Đơn lỗi — Đã hoàn tiền
+                            </span>
+                        </div>
+
+                        <div class="rounded-xl bg-slate-50/90 border border-slate-200/70 p-2.5 space-y-1.5 text-[11px]">
+                            <div class="flex items-center justify-between gap-2 min-w-0">
+                                <span class="text-slate-500 font-semibold shrink-0">Khách</span>
+                                <Link v-if="e.user_id" :href="`/admin/users/${e.user_id}`" class="font-bold text-[#0B1437] hover:text-[#1D6AE5] truncate">
+                                    {{ e.user_name ? `${e.user_name} (${e.user_email})` : e.user_email }}
+                                </Link>
+                                <span v-else class="font-mono text-slate-400 italic truncate">{{ e.user_email }}</span>
+                            </div>
+                            <div v-if="e.balance_before !== null && e.balance_after !== null" class="flex items-center justify-between gap-2 pt-1.5 border-t border-slate-200/70 font-mono-num">
+                                <span class="text-slate-500 font-sans font-semibold">Số dư ví</span>
+                                <span class="inline-flex items-center gap-1 text-slate-600 font-semibold">
+                                    <span>{{ formatVnd(e.balance_before) }}</span>
+                                    <ArrowRight class="w-3 h-3 text-slate-400" />
+                                    <strong class="text-[#0B1437]">{{ formatVnd(e.balance_after) }}</strong>
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Desktop Table -->
+                <div class="hidden lg:block overflow-x-auto">
                     <table class="w-full text-left border-collapse text-xs">
                         <thead>
                             <tr class="border-b border-slate-200 bg-slate-50/90 text-[11px] font-bold uppercase tracking-wider text-slate-600">

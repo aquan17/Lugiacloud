@@ -656,7 +656,127 @@ function saveFlashSale() {
                 <div v-if="campaigns.length === 0" class="p-10 text-center text-xs text-slate-600 font-medium">
                     Chưa có chiến dịch sự kiện nào. Nhấn nút tạo mới để lên lịch Tết, Black Friday, Sinh nhật...
                 </div>
-                <div v-else class="overflow-x-auto">
+                <template v-else>
+                    <!-- Mobile Cards -->
+                    <div class="lg:hidden divide-y divide-slate-200/80">
+                        <div v-for="c in campaigns" :key="`mc-${c.id}`" class="p-4 space-y-3 bg-white text-xs">
+                            <div class="flex items-start justify-between gap-2">
+                                <div class="min-w-0">
+                                    <div class="font-extrabold text-[13px] text-[#0B1437] break-words">{{ c.name }}</div>
+                                    <span v-if="c.badge_text" class="inline-block mt-1 px-2 py-0.5 rounded-md bg-blue-50 text-[#1D6AE5] border border-blue-200 text-[10.5px] font-bold">
+                                        {{ c.badge_text }}
+                                    </span>
+                                </div>
+                                <span
+                                    class="px-2 py-0.5 rounded-md text-[11px] font-bold border shrink-0"
+                                    :class="c.is_running_now ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-slate-100 text-slate-700 border-slate-200'"
+                                >
+                                    {{ c.is_running_now ? 'Đang diễn ra' : c.is_active ? 'Chờ lịch chạy' : 'Đã tắt' }}
+                                </span>
+                            </div>
+
+                            <div class="grid grid-cols-2 gap-2 rounded-xl bg-slate-50/90 border border-slate-200/70 p-2.5 text-[11px]">
+                                <div>
+                                    <div class="text-[10px] font-bold uppercase text-slate-400">Giảm giá dịch vụ</div>
+                                    <div class="font-mono-num font-extrabold text-[#0B1437] mt-0.5">
+                                        <template v-if="c.discount_type === 'percent'">-{{ c.discount_value }}%</template>
+                                        <template v-else-if="c.discount_type === 'fixed'">-{{ formatVnd(c.discount_value) }}</template>
+                                        <template v-else>Không giảm gói</template>
+                                    </div>
+                                </div>
+                                <div class="text-right">
+                                    <div class="text-[10px] font-bold uppercase text-slate-400">Thưởng nạp ví</div>
+                                    <div class="font-mono-num font-extrabold text-emerald-700 mt-0.5">
+                                        {{ c.topup_bonus_percent > 0 ? `+${c.topup_bonus_percent}%` : '—' }}
+                                    </div>
+                                </div>
+                                <div class="col-span-2 pt-2 border-t border-slate-200/70 text-slate-600 space-y-0.5">
+                                    <div>
+                                        Phạm vi: <strong class="text-slate-800">{{ scopeLabels[c.target_scope] || c.target_scope.toUpperCase() }}</strong>
+                                        <span v-if="c.apply_on_renew"> · Gia hạn</span>
+                                        <span v-if="c.apply_on_upgrade && c.target_scope !== 'upgrade'"> · Nâng cấp</span>
+                                    </div>
+                                    <div class="font-mono-num">Hiệu lực: {{ c.starts_display }} → {{ c.ends_display }}</div>
+                                    <div class="font-semibold">
+                                        <span v-if="c.launch_email_sent_at" class="text-emerald-700">Đã gửi mail ({{ c.launch_email_count }} KH) · {{ c.launch_email_sent_at }}</span>
+                                        <span v-else-if="c.send_launch_email" class="text-[#1D6AE5]">Tự gửi mail khi mở sự kiện</span>
+                                        <span v-else class="text-slate-400">Không gửi mail tự động</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="flex flex-wrap items-center gap-1.5">
+                                <button
+                                    type="button"
+                                    @click="openEditCampaign(c)"
+                                    class="flex-1 inline-flex items-center justify-center gap-1 px-3 py-2 rounded-xl border border-slate-300 bg-white hover:bg-blue-50 text-slate-800 font-bold cursor-pointer"
+                                >
+                                    <Edit3 class="w-3.5 h-3.5 text-[#1D6AE5]" />
+                                    <span>Sửa</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    @click="
+                                        askConfirm({
+                                            title: 'Gửi email quảng bá sự kiện',
+                                            message: c.launch_email_sent_at
+                                                ? `Sự kiện này đã gửi mail lúc ${c.launch_email_sent_at}. Gửi lại email quảng bá cho toàn bộ khách hàng?`
+                                                : `Gửi email thông báo sự kiện '${c.name}' tới toàn bộ khách hàng ngay bây giờ?`,
+                                            confirmText: 'Gửi email ngay',
+                                            variant: 'primary',
+                                            onConfirm: () => router.post(`/admin/promotions/campaigns/${c.id}/broadcast`, {}, { preserveScroll: true }),
+                                        })
+                                    "
+                                    class="inline-flex items-center gap-1 px-3 py-2 rounded-xl border border-blue-200 bg-blue-50/70 text-[#1D6AE5] font-bold cursor-pointer"
+                                >
+                                    <Mail class="w-3.5 h-3.5" />
+                                    <span>Mail</span>
+                                </button>
+                                <button
+                                    v-if="c.starts_at || c.ends_at"
+                                    type="button"
+                                    @click="
+                                        askConfirm({
+                                            title: 'Đẩy lịch sự kiện sang năm sau (+1 năm)',
+                                            message: `Dời ngày bắt đầu & kết thúc của '${c.name}' (kèm toàn bộ Coupon và Banner gắn theo) sang năm kế tiếp để tái sử dụng?`,
+                                            confirmText: 'Đẩy lịch +1 năm',
+                                            variant: 'primary',
+                                            onConfirm: () => router.post(`/admin/promotions/campaigns/${c.id}/roll-year`, {}, { preserveScroll: true }),
+                                        })
+                                    "
+                                    class="inline-flex items-center gap-1 px-2.5 py-2 rounded-xl border border-emerald-200 bg-emerald-50/70 text-emerald-700 font-bold cursor-pointer"
+                                >
+                                    <CalendarPlus class="w-3.5 h-3.5" />
+                                    <span>+1 năm</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    @click="router.post(`/admin/promotions/campaigns/${c.id}/toggle`, {}, { preserveScroll: true })"
+                                    class="p-2 rounded-xl border border-slate-200 text-slate-700 cursor-pointer"
+                                    title="Bật / Tắt"
+                                >
+                                    <Power class="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                    type="button"
+                                    @click="
+                                        askConfirm({
+                                            title: 'Xóa chiến dịch sự kiện',
+                                            message: `Bạn có chắc muốn xóa chiến dịch '${c.name}'?`,
+                                            onConfirm: () => router.delete(`/admin/promotions/campaigns/${c.id}`, { preserveScroll: true }),
+                                        })
+                                    "
+                                    class="p-2 rounded-xl border border-rose-200 text-rose-600 cursor-pointer"
+                                    title="Xóa"
+                                >
+                                    <Trash2 class="w-3.5 h-3.5" />
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Desktop Table -->
+                    <div class="hidden lg:block overflow-x-auto">
                     <table class="w-full text-left border-collapse text-xs">
                         <thead>
                             <tr class="border-b border-slate-200 bg-slate-50/90 text-xs font-bold uppercase tracking-wider text-slate-600 whitespace-nowrap">
@@ -795,6 +915,7 @@ function saveFlashSale() {
                         </tbody>
                     </table>
                 </div>
+                </template>
             </div>
 
             <!-- TAB 1.5: FLASH SALES BY SLOT -->
@@ -802,7 +923,99 @@ function saveFlashSale() {
                 <div v-if="!flashSales || flashSales.length === 0" class="p-10 text-center text-xs text-slate-600 font-medium">
                     Chưa có phiên Flash Sale nào. Nhấn <strong>Tạo phiên Flash Sale mới</strong> để mở suất ưu đãi gắn trực tiếp vào gói gốc VPS / Proxy.
                 </div>
-                <div v-else class="overflow-x-auto">
+                <template v-else>
+                    <!-- Mobile Cards -->
+                    <div class="lg:hidden divide-y divide-slate-200/80">
+                        <div v-for="fs in flashSales" :key="`mfs-${fs.id}`" class="p-4 space-y-3 bg-white text-xs">
+                            <div class="flex items-start justify-between gap-2">
+                                <div class="min-w-0">
+                                    <div class="font-extrabold text-[13px] text-[#0B1437] break-words">{{ fs.name }}</div>
+                                    <span class="inline-block mt-1 px-2 py-0.5 rounded bg-blue-50 text-[#1D6AE5] border border-blue-200 text-[10.5px] font-bold">
+                                        {{ fs.plan_name }} ({{ fs.plan_slug }})
+                                    </span>
+                                </div>
+                                <span
+                                    class="inline-flex items-center whitespace-nowrap px-2 py-0.5 rounded-md text-[11px] font-bold border shrink-0"
+                                    :class="
+                                        fs.is_live_now
+                                            ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                            : fs.is_upcoming
+                                              ? 'bg-amber-50 text-amber-800 border-amber-200'
+                                              : 'bg-slate-100 text-slate-700 border-slate-200'
+                                    "
+                                >
+                                    {{ fs.is_live_now ? 'Đang mở săn' : fs.is_upcoming ? 'Sắp mở' : fs.remaining_slots <= 0 ? 'Đã hết suất' : 'Đã tắt' }}
+                                </span>
+                            </div>
+
+                            <div class="rounded-xl bg-slate-50/90 border border-slate-200/70 p-2.5 space-y-2 text-[11px]">
+                                <div class="flex items-baseline justify-between gap-2 font-mono-num">
+                                    <div>
+                                        <span class="font-extrabold text-sm text-[#1D6AE5]">{{ formatVnd(fs.sale_price) }}/th</span>
+                                        <span class="ml-1.5 line-through text-slate-400">{{ formatVnd(fs.list_price) }}</span>
+                                    </div>
+                                    <span class="text-slate-500">Vốn: {{ formatVnd(fs.provider_cost) }}</span>
+                                </div>
+
+                                <div>
+                                    <div class="flex items-center justify-between font-bold mb-1">
+                                        <span class="text-[#0B1437]">Đã săn {{ fs.sold_slots }}/{{ fs.total_slots }}</span>
+                                        <span :class="fs.remaining_slots > 0 ? 'text-emerald-700' : 'text-rose-600'">
+                                            {{ fs.remaining_slots > 0 ? `Còn ${fs.remaining_slots} suất` : 'Hết suất' }}
+                                        </span>
+                                    </div>
+                                    <div class="w-full h-2 rounded-full bg-slate-200/70 overflow-hidden">
+                                        <div
+                                            class="h-full rounded-full transition-all"
+                                            :class="fs.remaining_slots <= 0 ? 'bg-slate-400' : 'bg-[#1D6AE5]'"
+                                            :style="{ width: Math.min(100, Math.round((fs.sold_slots / Math.max(1, fs.total_slots)) * 100)) + '%' }"
+                                        ></div>
+                                    </div>
+                                </div>
+
+                                <div class="pt-1.5 border-t border-slate-200/70 text-slate-600 font-mono-num space-y-0.5">
+                                    <div>Tối đa {{ fs.max_per_user }} suất/KH · ≤ {{ fs.max_months }} tháng</div>
+                                    <div class="text-slate-500">{{ fs.starts_display }} → {{ fs.ends_display }}</div>
+                                </div>
+                            </div>
+
+                            <div class="flex items-center gap-2">
+                                <button
+                                    type="button"
+                                    @click="openEditFlashSale(fs)"
+                                    class="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border border-slate-300 bg-white hover:bg-blue-50 text-slate-800 font-bold cursor-pointer"
+                                >
+                                    <Edit3 class="w-3.5 h-3.5 text-[#1D6AE5]" />
+                                    <span>Chỉnh sửa</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    @click="router.post(`/admin/promotions/flash-sales/${fs.id}/toggle`, {}, { preserveScroll: true })"
+                                    class="p-2 rounded-xl border border-slate-200 text-slate-700 cursor-pointer shrink-0"
+                                    title="Bật / Tắt"
+                                >
+                                    <Power class="w-4 h-4" />
+                                </button>
+                                <button
+                                    type="button"
+                                    @click="
+                                        askConfirm({
+                                            title: 'Xóa phiên Flash Sale',
+                                            message: `Bạn có chắc muốn xóa phiên Flash Sale '${fs.name}'?`,
+                                            onConfirm: () => router.delete(`/admin/promotions/flash-sales/${fs.id}`, { preserveScroll: true }),
+                                        })
+                                    "
+                                    class="p-2 rounded-xl border border-rose-200 text-rose-600 cursor-pointer shrink-0"
+                                    title="Xóa"
+                                >
+                                    <Trash2 class="w-4 h-4" />
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Desktop Table -->
+                    <div class="hidden lg:block overflow-x-auto">
                     <table class="w-full text-left border-collapse text-xs">
                         <thead>
                             <tr class="border-b border-slate-200 bg-slate-50/90 text-xs font-bold uppercase tracking-wider text-slate-600 whitespace-nowrap">
@@ -903,6 +1116,7 @@ function saveFlashSale() {
                         </tbody>
                     </table>
                 </div>
+                </template>
             </div>
 
             <!-- TAB 2: BANNERS -->
@@ -911,7 +1125,74 @@ function saveFlashSale() {
                     <div v-if="banners.length === 0" class="p-10 text-center text-xs text-slate-600 font-medium">
                         Chưa có Banner nào.
                     </div>
-                    <div v-else class="overflow-x-auto">
+                    <template v-else>
+                        <!-- Mobile Cards -->
+                        <div class="lg:hidden divide-y divide-slate-200/80">
+                            <div v-for="b in banners" :key="`mb-${b.id}`" class="p-4 space-y-2.5 bg-white text-xs">
+                                <div class="flex items-start justify-between gap-2">
+                                    <div class="min-w-0">
+                                        <div class="text-[10.5px] font-bold uppercase tracking-wider text-[#1D6AE5]">
+                                            {{ placementLabels[b.placement] || b.placement }}
+                                        </div>
+                                        <div class="font-extrabold text-[13px] text-[#0B1437] mt-0.5 break-words">{{ b.title }}</div>
+                                        <div v-if="b.subtitle" class="text-[11px] text-slate-500 mt-0.5 line-clamp-2">{{ b.subtitle }}</div>
+                                    </div>
+                                    <span
+                                        class="px-2 py-0.5 rounded-md text-[11px] font-bold border shrink-0"
+                                        :class="b.is_active ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-slate-100 text-slate-700 border-slate-200'"
+                                    >
+                                        {{ b.is_active ? 'Hiển thị' : 'Đang ẩn' }}
+                                    </span>
+                                </div>
+
+                                <div class="grid grid-cols-2 gap-2 rounded-xl bg-slate-50/90 border border-slate-200/70 p-2.5 text-[11px]">
+                                    <div>
+                                        <div class="text-[10px] font-bold uppercase text-slate-400">Mã hiển thị</div>
+                                        <div class="font-mono font-bold text-amber-700 mt-0.5">{{ b.coupon_code_display || '—' }}</div>
+                                    </div>
+                                    <div class="text-right">
+                                        <div class="text-[10px] font-bold uppercase text-slate-400">Chiến dịch</div>
+                                        <div class="font-semibold text-slate-700 mt-0.5 truncate">{{ b.campaign_name || 'Độc lập' }}</div>
+                                    </div>
+                                </div>
+
+                                <div class="flex items-center gap-2">
+                                    <button
+                                        type="button"
+                                        @click="openEditBanner(b)"
+                                        class="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border border-slate-300 bg-white hover:bg-blue-50 text-slate-800 font-bold cursor-pointer"
+                                    >
+                                        <Edit3 class="w-3.5 h-3.5 text-[#1D6AE5]" />
+                                        <span>Chỉnh sửa</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        @click="router.post(`/admin/promotions/banners/${b.id}/toggle`, {}, { preserveScroll: true })"
+                                        class="p-2 rounded-xl border border-slate-200 text-slate-700 cursor-pointer shrink-0"
+                                        title="Ẩn / Hiện"
+                                    >
+                                        <Power class="w-4 h-4" />
+                                    </button>
+                                    <button
+                                        type="button"
+                                        @click="
+                                            askConfirm({
+                                                title: 'Xóa Banner',
+                                                message: `Bạn có chắc muốn xóa Banner '${b.title || '#' + b.id}'?`,
+                                                onConfirm: () => router.delete(`/admin/promotions/banners/${b.id}`, { preserveScroll: true }),
+                                            })
+                                        "
+                                        class="p-2 rounded-xl border border-rose-200 text-rose-600 cursor-pointer shrink-0"
+                                        title="Xóa"
+                                    >
+                                        <Trash2 class="w-4 h-4" />
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Desktop Table -->
+                        <div class="hidden lg:block overflow-x-auto">
                         <table class="w-full text-left border-collapse text-xs">
                             <thead>
                                 <tr class="border-b border-slate-200 bg-slate-50/90 text-xs font-bold uppercase tracking-wider text-slate-600 whitespace-nowrap">
@@ -981,6 +1262,7 @@ function saveFlashSale() {
                             </tbody>
                         </table>
                     </div>
+                    </template>
                 </div>
             </div>
 
@@ -1047,7 +1329,91 @@ function saveFlashSale() {
                     <div v-if="coupons.length === 0" class="p-10 text-center text-xs text-slate-600 font-medium">
                         Chưa phát hành mã giảm giá nào.
                     </div>
-                    <div v-else class="overflow-x-auto">
+                    <template v-else>
+                    <!-- Mobile Cards -->
+                    <div class="lg:hidden divide-y divide-slate-200/80">
+                        <div v-for="cp in coupons" :key="`mcp-${cp.id}`" class="p-4 space-y-2.5 bg-white text-xs">
+                            <div class="flex items-start justify-between gap-2">
+                                <div class="min-w-0">
+                                    <div class="flex items-center flex-wrap gap-1.5">
+                                        <span class="font-mono font-black text-[13.5px] text-[#0B1437]">{{ cp.code }}</span>
+                                        <span
+                                            v-if="cp.is_huntable"
+                                            class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-blue-50 text-[#1D6AE5] border border-blue-200 text-[10px] font-bold"
+                                        >
+                                            <Ticket class="w-3 h-3" />
+                                            Kho Săn
+                                        </span>
+                                    </div>
+                                    <div v-if="cp.description" class="text-[11px] text-slate-500 mt-0.5 break-words">{{ cp.description }}</div>
+                                </div>
+                                <span
+                                    class="px-2 py-0.5 rounded-md text-[11px] font-bold border shrink-0"
+                                    :class="cp.is_active ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-slate-100 text-slate-700 border-slate-200'"
+                                >
+                                    {{ cp.is_active ? 'Hoạt động' : 'Đã khóa' }}
+                                </span>
+                            </div>
+
+                            <div class="grid grid-cols-2 gap-2 rounded-xl bg-slate-50/90 border border-slate-200/70 p-2.5 text-[11px] font-mono-num">
+                                <div>
+                                    <div class="text-[10px] font-sans font-bold uppercase text-slate-400">Mức giảm</div>
+                                    <div class="font-extrabold text-emerald-800 mt-0.5">
+                                        {{ cp.discount_type === 'percent' ? `-${cp.discount_value}%` : `-${formatVnd(cp.discount_value)}` }}
+                                    </div>
+                                    <div v-if="cp.max_discount_amount" class="text-[10px] font-sans text-slate-500">
+                                        Tối đa {{ formatVnd(cp.max_discount_amount) }}
+                                    </div>
+                                </div>
+                                <div class="text-right">
+                                    <div class="text-[10px] font-sans font-bold uppercase text-slate-400">Đơn tối thiểu</div>
+                                    <div class="font-bold text-slate-800 mt-0.5">{{ formatVnd(cp.min_order_amount) }}</div>
+                                </div>
+                                <div class="col-span-2 pt-2 border-t border-slate-200/70 flex items-center justify-between gap-2">
+                                    <span class="font-bold text-slate-800">Dùng: {{ cp.used_count }} / {{ cp.max_uses || '∞' }}</span>
+                                    <span v-if="cp.is_huntable" class="text-[#1D6AE5] font-semibold">
+                                        Đã săn: {{ cp.claimed_count }} / {{ cp.claim_limit || cp.max_uses || '∞' }}
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div class="flex items-center gap-2">
+                                <button
+                                    type="button"
+                                    @click="openEditCoupon(cp)"
+                                    class="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border border-slate-300 bg-white hover:bg-blue-50 text-slate-800 font-bold cursor-pointer"
+                                >
+                                    <Edit3 class="w-3.5 h-3.5 text-[#1D6AE5]" />
+                                    <span>Chỉnh sửa</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    @click="router.post(`/admin/promotions/coupons/${cp.id}/toggle`, {}, { preserveScroll: true })"
+                                    class="p-2 rounded-xl border border-slate-200 text-slate-700 cursor-pointer shrink-0"
+                                    title="Bật / Khóa"
+                                >
+                                    <Power class="w-4 h-4" />
+                                </button>
+                                <button
+                                    type="button"
+                                    @click="
+                                        askConfirm({
+                                            title: 'Xóa mã giảm giá',
+                                            message: `Bạn có chắc muốn xóa mã giảm giá ${cp.code}?`,
+                                            onConfirm: () => router.delete(`/admin/promotions/coupons/${cp.id}`, { preserveScroll: true }),
+                                        })
+                                    "
+                                    class="p-2 rounded-xl border border-rose-200 text-rose-600 cursor-pointer shrink-0"
+                                    title="Xóa"
+                                >
+                                    <Trash2 class="w-4 h-4" />
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Desktop Table -->
+                    <div class="hidden lg:block overflow-x-auto">
                     <table class="w-full text-left border-collapse text-xs">
                         <thead>
                             <tr class="border-b border-slate-200 bg-slate-50/90 text-xs font-bold uppercase tracking-wider text-slate-600 whitespace-nowrap">
@@ -1132,6 +1498,7 @@ function saveFlashSale() {
                         </tbody>
                     </table>
                 </div>
+                </template>
                 </div>
             </div>
 
